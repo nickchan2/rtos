@@ -1,23 +1,39 @@
+#include "rtos.h"
 #include "rtos_test.hh"
 
-static struct rtos_mutex mutex;
-static volatile int counter = 0;
+#include <optional>
 
-static void task_function() {
-    rtos_mutex_lock(&mutex);
-    ++counter;
-    rtos_task_sleep(10);
-    const bool is_done = counter == 2;
-    rtos_mutex_unlock(&mutex);
-    if (is_done) {
-        test_passed();
-    }
-}
+static std::optional<Mutex> mutex;
 
 int main() {
     quick_setup();
-    rtos_mutex_create(&mutex);
-    Task task0(1, task_function);
-    Task task1(1, task_function);
+
+    mutex.emplace();
+
+    Task task0(1, []{
+        CHECKPOINT(1);
+        mutex->lock();
+        CHECKPOINT(2);
+        
+        // Sleep while having the lock
+        rtos_task_sleep(RTOS_TICKS_PER_SLICE * 2);
+
+        mutex->unlock();
+        CHECKPOINT(4);
+    });
+
+    Task task1(1, []{
+        // Ensure that task0 gets the lock first
+        rtos_task_yield();
+        CHECKPOINT(3);
+
+        const int time_before = HAL_GetTick();
+        mutex->lock();
+        CHECKPOINT(5);
+        const int elapsed = HAL_GetTick() - time_before;
+        EXPECT(elapsed >= RTOS_TICKS_PER_SLICE * 2);
+        test_passed();
+    });
+
     rtos_start();
 }

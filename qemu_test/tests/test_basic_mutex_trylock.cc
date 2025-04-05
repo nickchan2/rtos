@@ -1,25 +1,36 @@
 #include "rtos_test.hh"
 
-static struct rtos_mutex mutex;
-static volatile bool task1_tried_to_lock = false;
+#include <optional>
+
+static std::optional<Mutex> mutex;
 
 int main() {
     quick_setup();
 
-    rtos_mutex_create(&mutex);
+    mutex.emplace();
 
     Task task0(1, []{
-        rtos_mutex_lock(&mutex);
-        rtos_task_sleep(10);
-        rtos_mutex_unlock(&mutex);
-        assert(task1_tried_to_lock);
-        test_passed();
+        CHECKPOINT(1);
+        mutex->lock();
+        CHECKPOINT(2);
+        rtos_task_sleep(5);
+        CHECKPOINT(5);
+        mutex->unlock();
+        CHECKPOINT(6);
     });
 
     Task task1(1, []{
-        const bool got_lock = rtos_mutex_trylock(&mutex);
-        assert(got_lock == false);
-        task1_tried_to_lock = true;
+        // Ensure that task0 gets the lock first
+        rtos_task_yield();
+        CHECKPOINT(3);
+        bool got_lock = mutex->trylock();
+        EXPECT(!got_lock);
+        CHECKPOINT(4);
+        rtos_task_sleep(10);
+        CHECKPOINT(7);
+        got_lock = mutex->trylock();
+        EXPECT(got_lock);
+        test_passed();
     });
 
     rtos_start();

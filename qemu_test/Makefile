@@ -62,7 +62,8 @@ C_FLAGS := \
 
 CXX_FLAGS := \
 	$(C_CXX_FLAGS) \
-	-std=gnu++17
+	-Wno-volatile \
+	-std=gnu++23
 
 $(OBJ_DIR)/%.o: %.c
 	@echo "CC  " $@

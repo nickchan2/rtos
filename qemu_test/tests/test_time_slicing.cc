@@ -9,7 +9,7 @@ static void task_function() {
         const int last_time = HAL_GetTick();
         while (counter == last_count) {}
         const int elapsed = HAL_GetTick() - last_time;
-        assert(elapsed >= (RTOS_TICKS_PER_SLICE - 1) * 2);
+        EXPECT(elapsed >= (RTOS_TICKS_PER_SLICE - 1) * 2);
 
         if (counter >= 10) {
             test_passed();

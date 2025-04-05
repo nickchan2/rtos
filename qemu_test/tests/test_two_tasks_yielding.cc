@@ -11,7 +11,7 @@ static void task_function() {
         }
         last = counter;
         rtos_task_yield();
-        assert(counter == last + 1);
+        EXPECT(counter == last + 1);
     }
 }
 

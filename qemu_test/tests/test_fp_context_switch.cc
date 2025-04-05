@@ -12,15 +12,15 @@ int main() {
         while (val < 100.0) {
             val += 1.0;
             rtos_task_yield();
-            assert(fp_active());
+            EXPECT(fp_active());
         }
     });
 
     Task nonfp_task(1, []{
-        assert(!fp_active());
+        EXPECT(!fp_active());
         while (true) {
             rtos_task_yield();
-            assert(!fp_active());
+            EXPECT(!fp_active());
         }
     });
 

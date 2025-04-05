@@ -7,7 +7,7 @@ int main() {
             const int time_before_sleep = HAL_GetTick();
             rtos_task_sleep(5);
             const int elapsed = HAL_GetTick() - time_before_sleep;
-            assert(elapsed == 5 || elapsed == 6);
+            EXPECT(elapsed == 5 || elapsed == 6);
         }
         test_passed();
     });

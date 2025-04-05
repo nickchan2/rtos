@@ -34,7 +34,13 @@ def run_qemu(test: str, q: multiprocessing.Queue) -> None:
     )
 
     try:
-        output: str = qemu.stdout.readline()
+        output: str = ""
+        while True:
+            read: str = qemu.stdout.readline()
+            if read == "<Test finished>\n":
+                break
+            else:
+                output += read
         q.put(output)
         exit(0)
     except:

@@ -23,11 +23,10 @@ static struct rtos_state state = {0};
 #if RTOS_ENABLE_USAGE_ASSERT
 
 #define usage_assert(cond, msg) \
-    if (!(cond)) rtos_failed_assert(#cond, __LINE__, msg)
+    if (!(cond)) rtos_failed_assert(#cond, __FILE__, __LINE__, msg)
 
-__attribute((noinline)) static void rtos_failed_assert(const char *cond,
-                                                       int line,
-                                                       const char *msg)
+__attribute((weak)) void rtos_failed_assert(const char *cond, const char *file,
+                                            int line, const char *msg)
 {
     asm volatile("cpsid i");
     while (true) {}
