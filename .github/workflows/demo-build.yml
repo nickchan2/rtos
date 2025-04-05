@@ -1,4 +1,4 @@
-name: Build PlatformIO Project
+name: Build Demo Project
 
 on:
   push:
@@ -13,8 +13,6 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v3
-      with:
-        submodules: recursive
 
     - name: Set up Python
       uses: actions/setup-python@v4
