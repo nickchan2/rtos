@@ -6,11 +6,13 @@
 
 static UART_HandleTypeDef huart2;
 static TIM_HandleTypeDef htim2;
-static struct rtos_mutex *uart_mutex_handle;
-static struct rtos_task *button_task_handle;
-static struct rtos_task *timer_task_handle;
-static struct rtos_task *led_task_handle;
+static struct rtos_mutex uart_mutex;
+static struct rtos_task button_task;
+static struct rtos_task timer_task;
+static struct rtos_task led_task;
+static struct rtos_task worker_task[2];
 static volatile size_t work_count[2];
+static uint8_t stacks[5][2048] __attribute__((aligned(8)));
 
 static void tim2_init(void)
 {
@@ -93,32 +95,32 @@ static void uart_transmit_str(const char *str)
     }
 }
 
-static void timer_task(void *arg)
+static void timer_task_function(void *arg)
 {
     while (true) {
         rtos_task_suspend();
-        rtos_mutex_lock(uart_mutex_handle);
+        rtos_mutex_lock(&uart_mutex);
         uart_transmit_str("Timer expired\n");
-        rtos_mutex_unlock(uart_mutex_handle);
+        rtos_mutex_unlock(&uart_mutex);
     }
 }
 
-static void button_task(void *arg)
+static void button_task_function(void *arg)
 {
     while (true) {
         rtos_task_suspend();
         char buf[64];
         snprintf(buf, sizeof(buf), "Button pressed %u %u\n", work_count[0],
                  work_count[1]);
-        rtos_mutex_lock(uart_mutex_handle);
+        rtos_mutex_lock(&uart_mutex);
         uart_transmit_str(buf);
-        rtos_mutex_unlock(uart_mutex_handle);
+        rtos_mutex_unlock(&uart_mutex);
     }
 }
 
-static void worker_task(void *arg)
+static void worker_task_function(void *arg)
 {
-    size_t *const work_count = arg;
+    volatile size_t *const work_count = arg;
     while (true) {
         volatile float x = 0;
         for (size_t i = 0; i < 1000000; i++) {
@@ -129,7 +131,7 @@ static void worker_task(void *arg)
     }
 }
 
-static void led_task(void *arg)
+static void led_task_function(void *arg)
 {
     while (true) {
         rtos_task_suspend();
@@ -156,18 +158,45 @@ int main(void)
 
     HAL_TIM_Base_Start_IT(&htim2);
 
-    uart_mutex_handle = rtos_mutex_create();
+    rtos_mutex_create(&uart_mutex, RTOS_MAX_TASK_PRIORITY);
 
-    button_task_handle = rtos_task_create(button_task, NULL, 2048, 2);
-    timer_task_handle = rtos_task_create(timer_task, NULL, 2048, 2);
-    led_task_handle = rtos_task_create(led_task, NULL, 2048, 3);
-    rtos_task_create(worker_task, (void *)&work_count[0], 2048, 1);
-    rtos_task_create(worker_task, (void *)&work_count[1], 2048, 1);
+    rtos_task_create(&button_task, &(struct rtos_task_settings){
+        .function = button_task_function,
+        .task_arg = NULL,
+        .stack_low = stacks[0],
+        .stack_size = sizeof(stacks[0]),
+        .priority = 1,
+    });
+    rtos_task_create(&timer_task, &(struct rtos_task_settings){
+        .function = timer_task_function,
+        .task_arg = NULL,
+        .stack_low = stacks[1],
+        .stack_size = sizeof(stacks[1]),
+        .priority = 1,
+    });
+    rtos_task_create(&led_task, &(struct rtos_task_settings){
+        .function = led_task_function,
+        .task_arg = NULL,
+        .stack_low = stacks[2],
+        .stack_size = sizeof(stacks[2]),
+        .priority = 2,
+    });
+    rtos_task_create(&worker_task[0], &(struct rtos_task_settings){
+        .function = worker_task_function,
+        .task_arg = (void *)&work_count[0],
+        .stack_low = stacks[3],
+        .stack_size = sizeof(stacks[3]),
+        .priority = 0,
+    });
+    rtos_task_create(&worker_task[1], &(struct rtos_task_settings){
+        .function = worker_task_function,
+        .task_arg = (void *)&work_count[1],
+        .stack_low = stacks[4],
+        .stack_size = sizeof(stacks[4]),
+        .priority = 0,
+    });
 
-    /* Should never return. */
     rtos_start();
-
-    return 0;
 }
 
 /* IRQ Handlers */
@@ -180,14 +209,14 @@ void SysTick_Handler(void)
 
 void TIM2_IRQHandler(void)
 {
-    rtos_task_resume_from_isr(timer_task_handle);
+    rtos_task_resume_from_isr(&timer_task);
     __HAL_TIM_CLEAR_IT(&htim2, TIM_IT_UPDATE);
 }
 
 void EXTI15_10_IRQHandler(void)
 {
-    rtos_task_resume_from_isr(button_task_handle);
-    rtos_task_resume_from_isr(led_task_handle);
+    rtos_task_resume_from_isr(&button_task);
+    rtos_task_resume_from_isr(&led_task);
     __HAL_GPIO_EXTI_CLEAR_IT(GPIO_PIN_13);
 }
 
