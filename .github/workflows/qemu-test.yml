@@ -13,9 +13,13 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v3
-      with:
-        fetch-depth: 0
-        submodules: recursive
+
+    - name: Initialize submodules
+      run: |
+        git submodule update --init --depth 1 qemu_test/common/STM32CubeF4
+        cd qemu_test/common/STM32CubeF4
+        git submodule update --init --depth 1 Drivers/STM32F4xx_HAL_Driver
+        git submodule update --init --depth 1 Drivers/CMSIS/Device/ST/STM32F4xx
 
     - name: Install dependencies
       run: |
