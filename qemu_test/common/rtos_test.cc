@@ -41,6 +41,7 @@ void configure_nvic_for_rtos() {
 }
 
 void test_passed() {
+    __disable_irq();
     printf("Pass\r\n");
     test_finished();
 }
@@ -48,6 +49,7 @@ void test_passed() {
 void checkpoint(int num, const char *file, int line) {
     static volatile int last = 0;
     if (num != last + 1) {
+        __disable_irq();
         printf("Checkoint fail: (%s:%d)\r\n", file, line);
         printf("%d was reached when %d was expected\r\n", num, last + 1);
         test_finished();
@@ -56,6 +58,7 @@ void checkpoint(int num, const char *file, int line) {
 }
 
 void test_failed(const char *msg, const char *file, int line) {
+    __disable_irq();
     printf("Fail: (%s:%d)\r\n", file, line);
     printf("%s\r\n", msg);
     test_finished();
@@ -63,6 +66,7 @@ void test_failed(const char *msg, const char *file, int line) {
 
 extern "C" void rtos_failed_assert(const char *cond, const char *file,
                                    int line, const char *msg) {
+    __disable_irq();
     printf("RTOS usage assertion fail: (%s:%d)\r\n", file, line);
     printf("%s\r\n", msg);
     test_finished();
