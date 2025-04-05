@@ -164,10 +164,7 @@ int main(void)
     rtos_task_create(worker_task, (void *)&work_count[0], 2048, 1);
     rtos_task_create(worker_task, (void *)&work_count[1], 2048, 1);
 
-    /* Should never return. */
     rtos_start();
-
-    return 0;
 }
 
 /* IRQ Handlers */

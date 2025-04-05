@@ -1,21 +1,25 @@
 #pragma once
 
+#include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdnoreturn.h>
 
 /* The RTOS includes optional assertions to ensure that it is being used
  * correctly. If enabled, if an assertion fails, an infinite spin is entered.
  * The cause can be determined using a debugger and examining arguments the
  * infinite spin function */
+#ifndef RTOS_ENABLE_USAGE_ASSERT
 #define RTOS_ENABLE_USAGE_ASSERT 1
+#endif
 
 enum {
     RTOS_TICKS_PER_SLICE        = 10,
     RTOS_NUM_PRIORITY_LEVELS    = 4,
     RTOS_MAX_TASK_PRIORITY      = RTOS_NUM_PRIORITY_LEVELS - 1,
 };
-_Static_assert(RTOS_TICKS_PER_SLICE > 0, "");
-_Static_assert(RTOS_NUM_PRIORITY_LEVELS >= 2, "");
+static_assert(RTOS_TICKS_PER_SLICE > 0, "Must have at least 1 tick per slice");
+static_assert(RTOS_NUM_PRIORITY_LEVELS >= 2, "");
 
 enum rtos_taskstate {
     RTOS_TASKSTATE_RUNNING,
@@ -37,6 +41,14 @@ struct rtos_task {
     enum rtos_taskstate state;
     struct rtos_task    *prev;
     struct rtos_task    *next;
+};
+
+struct rtos_task_settings {
+    rtos_task_func_t function; // Pointer to the task function
+    void *task_arg; // Pointer to pass to the task function
+    void *stack_low; // Low address of the stack. Must be aligned to 8 bytes.
+    size_t stack_size;  // Size of the stack in bytes. Must be at least 256 and a multiple of 8.
+    size_t priority; // The priority of the task. Higher number means higher priority. Must be in the range [1, RTOS_MAX_TASK_PRIORITY]. Note that 0 is reserved for the idle task.
 };
 
 struct rtos_dll {
@@ -63,24 +75,16 @@ void rtos_tick(void);
 /*
  * Start the RTOS and enter the first task. This function never returns.
  */
-void rtos_start(void);
+noreturn void rtos_start(void);
 
 /*
  * Create a new task. Can be called before RTOS is started.
  * Parameters:
- *     - function: Pointer to the task function entry.
- *     - task_args: Pointer to the arguments to pass to the task's function.
- *     - stack_size: Size of the stack in bytes. Must be at least 256 and a
- *       multiple of 8.
- *     - priority: The priority of the task. Higher number means higher
- *       priority. Must be in the range [1, RTOS_MAX_TASK_PRIORITY]. Note that
- *       0 is reserved for the idle task.
- * Return:
- *     - Handle to the new task if successful.
- *     - NULL if not.
+ *     - task: Handle to the task to create.
+ *     - settings: Settings for the task.
  */
-struct rtos_task *rtos_task_create(rtos_task_func_t function, void *task_args,
-                                   size_t stack_size, size_t priority);
+void rtos_task_create(struct rtos_task *task,
+                      const struct rtos_task_settings *settings);
 
 /*
  * Get the handle of the currently running task. Do not call before RTOS is
@@ -93,7 +97,7 @@ struct rtos_task *rtos_task_self(void);
 /*
  * Exit the currently running task. Do not call before RTOS is started.
  */
-void rtos_task_exit(void);
+noreturn void rtos_task_exit(void);
 
 /*
  * Yield the CPU to the next task (at the same priority level as the current
@@ -124,31 +128,18 @@ void rtos_task_resume(struct rtos_task *task);
 
 /*
  * Create a mutex. Can be called before RTOS is started.
- * Return:
- *     - Handle to the new mutex if successful.
- *     - NULL if not.
  */
-struct rtos_mutex *rtos_mutex_create(void);
+void rtos_mutex_create(struct rtos_mutex *);
 void rtos_mutex_destroy(struct rtos_mutex *mutex);
 void rtos_mutex_lock(struct rtos_mutex *mutex);
 bool rtos_mutex_trylock(struct rtos_mutex *mutex);
 void rtos_mutex_unlock(struct rtos_mutex *mutex);
 
-struct rtos_cond *rtos_cond_create(void);
+void rtos_cond_create(struct rtos_cond *cond);
 void rtos_cond_destroy(struct rtos_cond *cond);
 void rtos_cond_wait(struct rtos_cond *cond, struct rtos_mutex *mutex);
 void rtos_cond_signal(struct rtos_cond *cond);
 void rtos_cond_broadcast(struct rtos_cond *cond);
-
-/*
- * Thread-safe malloc.
- */
-void *rtos_malloc(size_t size);
-
-/*
- * Thread-safe free.
- */
-void rtos_free(void *ptr);
 
 /*
  * Resume a suspended task from an ISR.
