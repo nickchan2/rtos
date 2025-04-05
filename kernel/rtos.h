@@ -47,11 +47,11 @@ struct rtos_task {
 };
 
 struct rtos_task_settings {
-    rtos_task_func_t function; // Pointer to the task function
-    void *task_arg; // Pointer to pass to the task function
-    void *stack_low; // Low address of the stack. Must be aligned to 8 bytes.
-    size_t stack_size;  // Size of the stack in bytes. Must be at least 256 and a multiple of 8.
-    size_t priority; // The priority of the task. Higher number means higher priority. Must be in the range [1, RTOS_MAX_TASK_PRIORITY]. Note that 0 is reserved for the idle task.
+    rtos_task_func_t    function;
+    void                *task_arg;
+    void                *stack_low;
+    size_t              stack_size;
+    size_t              priority;
 };
 
 struct rtos_dll {
@@ -69,70 +69,26 @@ struct rtos_cond {
     struct rtos_dll waiting;
 };
 
-/*
- * Call this function from SysTick_Handler. Increments the kernel's internal
- * tick count and may cause a context switch.
- */
 void rtos_tick(void);
 
-/*
- * Start the RTOS and enter the first task. This function never returns.
- */
 __attribute((noreturn)) void rtos_start(void);
 
-/*
- * Create a new task. Can be called before RTOS is started.
- * Parameters:
- *     - task: Handle to the task to create.
- *     - settings: Settings for the task.
- */
 void rtos_task_create(struct rtos_task *task,
                       const struct rtos_task_settings *settings);
 
-/*
- * Get the handle of the currently running task. Do not call before RTOS is
- * started.
- * Return:
- *     - Handle of the currently running task.
- */
 struct rtos_task *rtos_task_self(void);
 
-/*
- * Exit the currently running task. Do not call before RTOS is started.
- */
- __attribute((noreturn)) void rtos_task_exit(void);
+__attribute((noreturn)) void rtos_task_exit(void);
 
-/*
- * Yield the CPU to the next task (at the same priority level as the current
- * task). The yielding task's time slice is reset. Do not call before RTOS is
- * started.
- */
 void rtos_task_yield(void);
 
-/*
- * The currently running task sleeps for a given number of ticks. The task's
- * time slice is reset. Do not call before RTOS is started.
- * Parameters:
- *     - ticks: Number of ticks to sleep.
- */
 void rtos_task_sleep(size_t ticks);
 
-/*
- * Suspend the currently running task. Do not call before RTOS is started.
- */
 void rtos_task_suspend(void);
 
-/*
- * Resume a suspended task. Do not call before RTOS is started.
- * Parameters:
- *     - task: Handle of the task to resume.
- */
 void rtos_task_resume(struct rtos_task *task);
 
-/*
- * Create a mutex. Can be called before RTOS is started.
- */
-void rtos_mutex_create(struct rtos_mutex *);
+void rtos_mutex_create(struct rtos_mutex *mutex);
 void rtos_mutex_destroy(struct rtos_mutex *mutex);
 void rtos_mutex_lock(struct rtos_mutex *mutex);
 bool rtos_mutex_trylock(struct rtos_mutex *mutex);
@@ -144,9 +100,6 @@ void rtos_cond_wait(struct rtos_cond *cond, struct rtos_mutex *mutex);
 void rtos_cond_signal(struct rtos_cond *cond);
 void rtos_cond_broadcast(struct rtos_cond *cond);
 
-/*
- * Resume a suspended task from an ISR.
- */
 void rtos_task_resume_from_isr(struct rtos_task *task);
 
 #ifdef __cplusplus
