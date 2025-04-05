@@ -1,9 +1,12 @@
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
-#include <stdnoreturn.h>
 
 /* The RTOS includes optional assertions to ensure that it is being used
  * correctly. If enabled, if an assertion fails, an infinite spin is entered.
@@ -75,7 +78,7 @@ void rtos_tick(void);
 /*
  * Start the RTOS and enter the first task. This function never returns.
  */
-noreturn void rtos_start(void);
+__attribute((noreturn)) void rtos_start(void);
 
 /*
  * Create a new task. Can be called before RTOS is started.
@@ -97,7 +100,7 @@ struct rtos_task *rtos_task_self(void);
 /*
  * Exit the currently running task. Do not call before RTOS is started.
  */
-noreturn void rtos_task_exit(void);
+ __attribute((noreturn)) void rtos_task_exit(void);
 
 /*
  * Yield the CPU to the next task (at the same priority level as the current
@@ -145,3 +148,7 @@ void rtos_cond_broadcast(struct rtos_cond *cond);
  * Resume a suspended task from an ISR.
  */
 void rtos_task_resume_from_isr(struct rtos_task *task);
+
+#ifdef __cplusplus
+}
+#endif

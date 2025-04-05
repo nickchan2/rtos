@@ -1,11 +1,10 @@
+#include "huart.h"
 #include "rtos.h"
+#include "rtos_test.hh"
 #include "stm32f4xx_hal.h"
-#include "test_utils.h"
 
 #include <stdio.h>
 #include <stdlib.h>
-
-UART_HandleTypeDef huart;
 
 void quick_setup(void)
 {
@@ -41,7 +40,7 @@ void test_passed(void)
     exit(0);
 }
 
-void SysTick_Handler(void)
+extern "C" void SysTick_Handler(void)
 {
     HAL_IncTick();
     rtos_tick();

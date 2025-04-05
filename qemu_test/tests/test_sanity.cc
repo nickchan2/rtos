@@ -1,6 +1,6 @@
-#include "test_utils.h"
+#include "rtos_test.hh"
 
-int main(void) {
+int main() {
     quick_setup();
     test_passed();
 }
