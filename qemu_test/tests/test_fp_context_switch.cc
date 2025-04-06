@@ -5,24 +5,24 @@ static bool fp_active() {
 }
 
 int main() {
-    quick_setup();
+    rtos_test::setup();
 
-    Task fp_task(1, []{
+    rtos::TaskWithStack fp_task(1, []{
         volatile float val = 0.0;
         while (val < 100.0) {
             val += 1.0;
-            rtos_task_yield();
+            rtos::Task::yield();
             EXPECT(fp_active());
         }
     });
 
-    Task nonfp_task(1, []{
+    rtos::TaskWithStack nonfp_task(1, []{
         EXPECT(!fp_active());
         while (true) {
-            rtos_task_yield();
+            rtos::Task::yield();
             EXPECT(!fp_active());
         }
     });
 
-    rtos_start();
+    rtos::start();
 }

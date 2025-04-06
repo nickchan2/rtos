@@ -9,6 +9,7 @@ TESTS: List[str] = [
     "test_starting_rtos_enters_first_task",
     "test_task_self",
     "test_passing_arg",
+    "test_context_switch_regs",
     "test_two_tasks_yielding",
     "test_basic_sleep",
     "test_starved_task",
@@ -21,6 +22,10 @@ TESTS: List[str] = [
     "test_cond_signal",
     "test_cond_broadcast",
 ]
+
+GREEN: str = "\033[92m"
+RED: str = "\033[91m"
+RESET: str = "\033[0m"
 
 def run_qemu(test: str, q: multiprocessing.Queue) -> None:
     qemu = subprocess.Popen(
@@ -47,7 +52,8 @@ def run_qemu(test: str, q: multiprocessing.Queue) -> None:
         os.killpg(os.getpgid(qemu.pid), signal.SIGTERM)
 
 def run_test(test: str) -> bool:
-    print(f"\nTest: {test}")
+    print("\n------------------------------------------")
+    print(f"Test: {test}")
 
     print("Building test...")
     result = subprocess.run(
@@ -59,7 +65,9 @@ def run_test(test: str) -> bool:
     )
     if result.returncode != 0:
         print("Error building test:")
+        print(result.stdout)
         print(result.stderr)
+        print(f"{RED}Test failed{RESET}")
         return False
 
     print("Running test...")
@@ -76,7 +84,6 @@ def run_test(test: str) -> bool:
     else:
         output: str = q.get()
         if (output == "Pass\n"):
-            print("Test passed")
             passed = True
         else:
             print("Test failed with output:")
@@ -84,6 +91,10 @@ def run_test(test: str) -> bool:
 
     p.terminate()
     p.join()
+    if passed:
+        print(f"{GREEN}Test passed{RESET}")
+    else:
+        print(f"{RED}Test failed{RESET}")
     return passed
 
 if __name__ == "__main__":

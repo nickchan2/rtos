@@ -1,5 +1,4 @@
 #include "huart.h"
-#include "rtos.h"
 #include "rtos_test.hh"
 #include "stm32f4xx_hal.h"
 
@@ -11,14 +10,6 @@ namespace {
 [[noreturn]] void test_finished() {
     puts("<Test finished>\r\n");
     exit(0);
-}
-
-} // namespace
-
-void quick_setup() {
-    HAL_Init();
-    uart_init();
-    configure_nvic_for_rtos();
 }
 
 void uart_init() {
@@ -40,13 +31,21 @@ void configure_nvic_for_rtos() {
     HAL_NVIC_SetPriority(PendSV_IRQn, 15, 0); // Lowest possible priority
 }
 
-void test_passed() {
+} // namespace
+
+void rtos_test::setup() {
+    HAL_Init();
+    uart_init();
+    configure_nvic_for_rtos();
+}
+
+void rtos_test::pass() {
     __disable_irq();
     printf("Pass\r\n");
     test_finished();
 }
 
-void checkpoint(int num, const char *file, int line) {
+void rtos_test::checkpoint(int num, const char *file, int line) {
     static volatile int last = 0;
     if (num != last + 1) {
         __disable_irq();
@@ -57,7 +56,7 @@ void checkpoint(int num, const char *file, int line) {
     ++last;
 }
 
-void test_failed(const char *msg, const char *file, int line) {
+void rtos_test::fail(const char *msg, const char *file, int line) {
     __disable_irq();
     printf("Fail: (%s:%d)\r\n", file, line);
     printf("%s\r\n", msg);
@@ -74,5 +73,5 @@ extern "C" void rtos_failed_assert(const char *cond, const char *file,
 
 extern "C" void SysTick_Handler(void) {
     HAL_IncTick();
-    rtos_tick();
+    rtos::tick();
 }

@@ -5,17 +5,17 @@
 static const int waiter_count = 4;
 
 static volatile int counter = 0;
-static std::optional<Cond> cond;
-static std::optional<Mutex> mutex;
+static std::optional<rtos::Cond> cond;
+static std::optional<rtos::Mutex> mutex;
 
 int main() {
-    quick_setup();
+    rtos_test::setup();
     cond.emplace();
     mutex.emplace();
     
-    std::array<std::optional<Task>, waiter_count> waiter_tasks;
-    for (auto &task : waiter_tasks) {
-        task.emplace(1, []{
+    std::array<std::optional<rtos::TaskWithStack<>>, waiter_count> waiters;
+    for (auto &waiter : waiters) {
+        waiter.emplace(1, []{
             mutex->lock();
             cond->wait(*mutex);
             ++counter;
@@ -23,17 +23,17 @@ int main() {
         });
     }
 
-    Task broadcaster_task(1, []{
+    rtos::TaskWithStack broadcaster(1, []{
         // Ensure all waiters are waiting before signaling
-        rtos_task_sleep(100);
+        rtos::Task::sleep(100);
 
         cond->broadcast();
-        rtos_task_sleep(100);
+        rtos::Task::sleep(100);
         mutex->lock();
         EXPECT(counter == waiter_count);
         mutex->unlock();
-        test_passed();
+        rtos_test::pass();
     });
 
-    rtos_start();
+    rtos::start();
 }

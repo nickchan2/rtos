@@ -1,18 +1,13 @@
 #include "rtos_test.hh"
 
-static void task_function(void *arg) {
-    rtos_task **task_ptr = static_cast<rtos_task **>(arg);
-    EXPECT(rtos_task_self() == *task_ptr);
-    test_passed();
+static void task_function(void *task_ptr) {
+    EXPECT(rtos::Task::self() == task_ptr);
+    rtos_test::pass();
 }
 
 int main() {
-    quick_setup();
-    rtos_task *task0_ptr = nullptr;
-    rtos_task *task1_ptr = nullptr;
-    Task task0(1, &task0_ptr, task_function);
-    Task task1(1, &task1_ptr, task_function);
-    task0_ptr = &task0.task;
-    task1_ptr = &task1.task;
-    rtos_start();
+    rtos_test::setup();
+    rtos::TaskWithStack<> task0(1, &task0, task_function);
+    rtos::TaskWithStack<> task1(1, &task1, task_function);
+    rtos::start();
 }

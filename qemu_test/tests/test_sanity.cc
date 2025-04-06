@@ -1,6 +1,6 @@
 #include "rtos_test.hh"
 
 int main() {
-    quick_setup();
-    test_passed();
+    rtos_test::setup();
+    rtos_test::pass();
 }

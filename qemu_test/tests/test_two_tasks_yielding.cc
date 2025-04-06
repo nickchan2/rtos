@@ -7,19 +7,19 @@ static void task_function() {
     while (true) {
         ++counter;
         if (counter > 100) {
-            test_passed();
+            rtos_test::pass();
         }
         last = counter;
-        rtos_task_yield();
+        rtos::Task::yield();
         EXPECT(counter == last + 1);
     }
 }
 
 int main() {
-    quick_setup();
+    rtos_test::setup();
 
-    Task task0(1, task_function);
-    Task task1(1, task_function);
+    rtos::TaskWithStack task0(1, task_function);
+    rtos::TaskWithStack task1(1, task_function);
 
-    rtos_start();
+    rtos::start();
 }

@@ -12,14 +12,14 @@ static void task_function() {
         EXPECT(elapsed >= (RTOS_TICKS_PER_SLICE - 1) * 2);
 
         if (counter >= 10) {
-            test_passed();
+            rtos_test::pass();
         }
     }
 }
 
 int main() {
-    quick_setup();
-    Task task0(1, task_function);
-    Task task1(1, task_function);
-    rtos_start();
+    rtos_test::setup();
+    rtos::TaskWithStack task0(1, task_function);
+    rtos::TaskWithStack task1(1, task_function);
+    rtos::start();
 }

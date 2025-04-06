@@ -1,7 +1,8 @@
+#include "rtos.hh"
 #include "rtos_test.hh"
 
 int main() {
-    quick_setup();
-    Task task(1, []{ test_passed(); });
-    rtos_start();
+    rtos_test::setup();
+    rtos::TaskWithStack task(1, []{ rtos_test::pass(); });
+    rtos::start();
 }

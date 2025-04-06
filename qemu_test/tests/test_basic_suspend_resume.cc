@@ -1,23 +1,23 @@
 #include "rtos_test.hh"
 
 int main() {
-    quick_setup();
+    rtos_test::setup();
 
-    Task suspended_task(1, []{
+    rtos::TaskWithStack suspended(1, []{
         CHECKPOINT(1);
-        rtos_task_suspend();
+        rtos::Task::suspend();
         CHECKPOINT(4);
-        test_passed();
+        rtos_test::pass();
     });
 
-    Task resumer_task(1, &suspended_task.task, [](void *suspended_task){
+    rtos::TaskWithStack resumer(1, &suspended, [](void *suspended){
         // Ensure the suspended task is suspended before continuing
-        rtos_task_yield();
+        rtos::Task::yield();
         CHECKPOINT(2);
-        rtos_task_sleep(100);
+        rtos::Task::sleep(100);
         CHECKPOINT(3);
-        rtos_task_resume(static_cast<rtos_task *>(suspended_task));
+        rtos::Task::resume(static_cast<rtos::Task *>(suspended));
     });
 
-    rtos_start();
+    rtos::start();
 }
