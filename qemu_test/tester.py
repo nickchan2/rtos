@@ -2,6 +2,7 @@ import multiprocessing
 import os
 import signal
 import subprocess
+import sys
 from typing import List
 
 TESTS: List[str] = [
@@ -51,13 +52,14 @@ def run_qemu(test: str, q: multiprocessing.Queue) -> None:
     except:
         os.killpg(os.getpgid(qemu.pid), signal.SIGTERM)
 
-def run_test(test: str) -> bool:
+def run_test(test: str, optimize: bool) -> bool:
     print("\n------------------------------------------")
     print(f"Test: {test}")
 
+    oflags: str = "-O2 -flto" if optimize else "-O0"
     print("Building test...")
     result = subprocess.run(
-        ["make", f"-j{os.cpu_count()}", f"TEST_NAME={test}"],
+        ["make", f"-j{os.cpu_count()}", f"TEST_NAME={test}", f"OPTIMIZE_FLAGS={oflags}"],
         cwd=os.path.dirname(os.path.abspath(__file__)),
         stdout=subprocess.PIPE, 
         stderr=subprocess.PIPE, 
@@ -102,9 +104,10 @@ if __name__ == "__main__":
         ["make", "clean"],
         cwd=os.path.dirname(os.path.abspath(__file__)),
     )
+
     pass_count: int = 0
     for test in TESTS:
-        if run_test(test):
+        if run_test(test, "optimize" in sys.argv[1:]):
             pass_count += 1
 
     print(f"\n{pass_count}/{len(TESTS)} tests passed")

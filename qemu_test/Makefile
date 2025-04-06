@@ -38,6 +38,7 @@ OBJ := $(patsubst %.c,$(OBJ_DIR)/%.o,$(filter %.c,$(SRC))) \
 
 C_CXX_FLAGS := \
 	$(addprefix -I, $(INC_DIRS)) \
+	$(OPTIMIZE_FLAGS) \
 	-Werror \
 	-Wall \
 	-Wextra \
@@ -48,13 +49,11 @@ C_CXX_FLAGS := \
 	-mthumb \
 	-fdata-sections \
 	-ffunction-sections \
-	-flto \
 	-MMD \
 	-mfpu=fpv4-sp-d16 \
 	-mfloat-abi=hard \
 	-specs=nano.specs \
-	-g3 \
-	-O2
+	-g3
 
 C_FLAGS := \
 	$(C_CXX_FLAGS) \
