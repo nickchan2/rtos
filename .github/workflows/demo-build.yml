@@ -1,0 +1,29 @@
+name: Build Demo Project
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-platformio:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+
+    - name: Install PlatformIO
+      run: |
+        pip install platformio
+
+    - name: Build PlatformIO project
+      working-directory: demo_project
+      run: |
+        pio run

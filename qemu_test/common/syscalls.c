@@ -1,4 +1,4 @@
-#include "test_utils.h"
+#include "huart.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -19,7 +19,7 @@ void _exit(int status)
 {
     __disable_irq();
     while (true) {
-        asm volatile("wfi");
+        __asm volatile("wfi");
     }
 }
 

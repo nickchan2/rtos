@@ -1,121 +1,25 @@
+#include "cortex_m4.h"
+#include "dll.h"
 #include "rtos.h"
+#include "rtos_assert.h"
+#include "stack_frame.h"
+#include "state.h"
 
-#include <assert.h> // TODO: Add internal assertion instead
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
-struct rtos_state {
-    // Accessed from assembly begin
-    struct rtos_task    *curr_task;
-    // Accessed from assembly end
-    bool                is_started;
-    bool                is_preempting; // TODO: Is there a better alternative?
-    size_t              tick_count;
-    struct rtos_dll     ready_task_q[RTOS_NUM_PRIORITY_LEVELS];
-    struct rtos_dll     sleeping_tasks;
-    struct rtos_task    idle_task;
-    char                idle_task_stack[256] __attribute__((aligned(8)));
-};
+static_assert(RTOS_TICKS_PER_SLICE > 0, "Must have at least 1 tick per slice");
+static_assert(RTOS_NUM_PRIORITY_LEVELS >= 2, "");
 
 // All of the kernel's state is stored here
-static struct rtos_state state = {0};
+static rtos_state_t state = {0};
 
-#if RTOS_ENABLE_USAGE_ASSERT
-
-#define usage_assert(cond, msg) \
-    if (!(cond)) rtos_failed_assert(#cond, __LINE__, msg)
-
-__attribute((noinline)) static void rtos_failed_assert(const char *cond,
-                                                       int line,
-                                                       const char *msg)
-{
-    asm volatile("cpsid i");
-    while (true) {}
-}
-
-#else // #if RTOS_ENABLE_USAGE_ASSERT
-
-#define usage_assert(cond, msg)
-
-#endif // #if RTOS_ENABLE_USAGE_ASSERT
-
-static void prv_task_create(struct rtos_task *, const struct rtos_task_settings *);
-
-static inline bool dll_is_empty(const struct rtos_dll *dll)
-{
-    return dll->head == NULL;
-}
-
-static struct rtos_task *dll_pop_front(struct rtos_dll *dll)
-{
-    assert(dll->head != NULL);
-    struct rtos_task *const popped = dll->head;
-    if (popped->next == NULL) {
-        dll->tail = NULL;
-    } else {
-        popped->next->prev = NULL;
-    }
-    dll->head = popped->next;
-    popped->prev = NULL;
-    popped->next = NULL;
-    return popped;
-}
-
-static void dll_push_front(struct rtos_dll *dll, struct rtos_task *task)
-{
-    if (dll->head == NULL) {
-        dll->head = task;
-        dll->tail = task;
-        task->prev = NULL;
-        task->next = NULL;
-    } else {
-        dll->head->prev = task;
-        task->next = dll->head;
-        dll->head = task;
-        task->prev = NULL;
-    }
-}
-
-static void dll_push_back(struct rtos_dll *dll, struct rtos_task *task)
-{
-    if (dll->head == NULL) {
-        dll->head = task;
-        dll->tail = task;
-        task->prev = NULL;
-        task->next = NULL;
-    } else {
-        dll->tail->next = task;
-        task->prev = dll->tail;
-        task->next = NULL;
-        dll->tail = task;
-    }
-}
-
-static void dll_insert_ascending(struct rtos_dll *dll, struct rtos_task *task)
-{
-    struct rtos_task *ptr = dll->head;
-    while (ptr != NULL && ptr->wake_time < task->wake_time) {
-        ptr = ptr->next;
-    }
-    if (ptr == NULL) {
-        dll_push_back(dll, task);
-    } else {
-        if (ptr->prev == NULL) {
-            dll->head = task;
-        } else {
-            ptr->prev->next = task;
-        }
-        task->prev = ptr->prev;
-        task->next = ptr;
-        ptr->prev = task;
-    }
-}
+static void prv_task_create(rtos_task_t *, const rtos_task_settings_t *);
 
 static inline void pend_context_switch(void)
 {
-    // Sent PendSV bit in the ICSR
-    static volatile size_t *const ICSR = (volatile size_t *)0xE000ED04U;
-    *ICSR |= 1 << 28;
+    *cm4_icsr |= cm4_icsr_pendsvset_mask;
 }
 
 // Instead directly entering the task function, a stub function is used which
@@ -124,87 +28,64 @@ static void stub(void *arg, rtos_task_func_t task_func)
 {
     task_func(arg);
     rtos_task_exit();
-    assert(false);
-}
-
-// Context switch stack frame:
-// See 2-27
-// 
-// ----- Saved on exception entry only if using FP
-// FPSCR
-// S15
-// ...
-// S0
-//
-// ----- Always saved on exception entry
-// xPSR
-// PC
-// LR
-// R12
-// R3
-// ...
-// R0
-// 
-// ----- Always saved by context switch handler
-// R11
-// ...
-// R4
-//
-// ----- Saved by the context switch handler using FP
-// S31
-// ...
-// S16
-//
-// ----- Always saved by context switch handler
-// EXC_RETURN (indicates if FP is used)
-
-static size_t *create_switch_frame(const struct rtos_task_settings *settings)
-{
-    size_t *stack_top = settings->stack_low + settings->stack_size;
-    const rtos_task_func_t task_func = settings->function;
-    const void *task_arg = settings->task_arg;
-
-    usage_assert(((size_t)stack_top & 0b111) == 0,
-                 "Stack must be 8-byte aligned");
-
-    *(--stack_top) = 1 << 24;           // PSR (indicate thumb mode)
-    *(--stack_top) = (size_t)stub;      // PC
-
-    for (int i = 0; i < 4; ++i) {
-        *(--stack_top) = 0;             // LR, R12, R3, R2
-    }
-
-    *(--stack_top) = (size_t)task_func; // R1 (Arg 1 for stub)
-    *(--stack_top) = (size_t)task_arg;  // R0 (Arg 0 for stub)
-
-    for (int i = 0; i < 8; ++i) {
-        *(--stack_top) = 0;             // R11 - R4
-    }
-
-    // See 2-28
-    *(--stack_top) = 0xFFFFFFFDU;   // EXC_RETURN (thread mode, PSP, non-FP)
-
-    return stack_top;
+    ASSERT(false);
 }
 
 static void idle_task(void *args)
 {
     while (true) {
-        asm volatile("wfi");
+        cm4_wait_for_interrupt();
     }
 }
 
-static void task_init(struct rtos_task *task,
-                      const struct rtos_task_settings *settings)
+static size_t *create_switch_frame(const rtos_task_settings_t *settings)
 {
-    task->stack_low     = settings->stack_low;
-    task->switch_frame  = create_switch_frame(settings);
-    task->priority      = settings->priority;
-    task->slice_left    = RTOS_TICKS_PER_SLICE;
-    task->wake_time     = 0;
-    task->state         = RTOS_TASKSTATE_READY;
-    task->prev          = NULL;
-    task->next          = NULL;
+    void *const stack_top = settings->stack_low + settings->stack_size;
+    USAGE_ASSERT(((size_t)stack_top & 0b111) == 0,
+                  "Stack must be 8-byte aligned");
+    switch_frame_nofp_t *const switch_frame = stack_top - sizeof(switch_frame_nofp_t);
+
+    *switch_frame = (switch_frame_nofp_t){
+        .exc_return = cm4_exc_return_thread_psp_nofp,
+        .r0         = (size_t)settings->task_arg,
+        .r1         = (size_t)settings->function,
+        .pc         = (size_t)stub,
+        .xpsr       = cm4_epsr_thumb_mask,
+    };
+
+    return (void *)switch_frame;
+}
+
+static void task_init(rtos_task_t *task, const rtos_task_settings_t *settings)
+{
+    *task = (rtos_task_t){
+        .switch_frame   = create_switch_frame(settings),
+        .stack_low      = NULL,
+        .priority       = settings->priority,
+        .def_priority   = settings->priority,
+        .slice_left     = RTOS_TICKS_PER_SLICE,
+        .wake_time      = 0,
+        .state          = RTOS_TASKSTATE_READY,
+        .prev           = NULL,
+        .next           = NULL,
+    };
+}
+
+static void make_task_ready(rtos_task_t *task)
+{
+    task->state = RTOS_TASKSTATE_READY;
+    dll_push_back(&state.ready_task_q[task->priority], task);
+
+    if (state.curr_task != NULL &&
+        task->priority > state.curr_task->priority &&
+        !state.is_preempting)
+    {
+        state.is_preempting = true;
+        state.curr_task->state = RTOS_TASKSTATE_READY;
+        dll_push_front(&state.ready_task_q[state.curr_task->priority],
+                        state.curr_task);
+        pend_context_switch();
+    }
 }
 
 /* ----------------------------------------------------------------------------
@@ -213,13 +94,14 @@ static void task_init(struct rtos_task *task,
 
 static void prv_start(void)
 {
-    usage_assert(state.is_started == false, "RTOS already started");
+    USAGE_ASSERT(state.is_started == false, "RTOS already started");
     state.is_started = true;
 
+    // FIXME
     static volatile size_t *const FPCSR = (volatile size_t *)0xE000EF34U;
     *FPCSR |= (1 << 31) | (1 << 30); // ASPEN | LSPEN
 
-    prv_task_create(&state.idle_task, &(struct rtos_task_settings){
+    task_init(&state.idle_task, &(rtos_task_settings_t){
         .function = idle_task,
         .task_arg = NULL,
         .stack_low = state.idle_task_stack,
@@ -230,45 +112,33 @@ static void prv_start(void)
     pend_context_switch();
 }
 
-static void prv_task_create(struct rtos_task *task,
-                            const struct rtos_task_settings *settings)
+static void prv_task_create(rtos_task_t *task,
+                            const rtos_task_settings_t *settings)
 {
-    usage_assert(settings->function != NULL, "Passed NULL task function");
-    usage_assert((size_t)settings->stack_low % 8 == 0,
+    USAGE_ASSERT(settings->function != NULL, "Passed NULL task function");
+    USAGE_ASSERT((size_t)settings->stack_low % 8 == 0,
                  "Stack low address must be 8-byte aligned");
-    usage_assert(settings->stack_size >= 256,
+    USAGE_ASSERT(settings->stack_size >= 256,
                  "Stack size must be at least 256 bytes");
-    usage_assert(settings->stack_size % 8 == 0,
+    USAGE_ASSERT(settings->stack_size % 8 == 0,
                  "Stack size must be multiple of 8");
-    // FIXME: Can be zero if the task is the idle task.
-    // usage_assert(priority > 0 && priority <= RTOS_MAX_TASK_PRIORITY,
-    //              "Task priority must be in range [1,RTOS_MAX_TASK_PRIORITY]");
+    USAGE_ASSERT(settings->priority <= RTOS_MAX_TASK_PRIORITY,
+                 "Task priority must be at most RTOS_MAX_TASK_PRIORITY");
 
     task_init(task, settings);
 
-    const size_t priority = settings->priority;
-
-    dll_push_back(&state.ready_task_q[priority], task);
-
-    if (state.curr_task != NULL && state.curr_task->priority < priority) {
-        // The priority of the new task is higher than the priority of the task
-        // that created it. The new task preempts the current task. */
-        state.curr_task->state = RTOS_TASKSTATE_READY;
-        dll_push_front(&state.ready_task_q[state.curr_task->priority],
-                       state.curr_task);
-        pend_context_switch();
-    }
+    make_task_ready(task);
 }
 
-static struct rtos_task *prv_task_self(void)
+static rtos_task_t *prv_task_self(void)
 {
-    usage_assert(state.is_started, "RTOS must be started before calling");
+    USAGE_ASSERT(state.is_started, "RTOS must be started before calling");
     return state.curr_task;
 }
 
 static void prv_task_exit(void)
 {
-    usage_assert(state.is_started, "RTOS must be started before calling");
+    USAGE_ASSERT(state.is_started, "RTOS must be started before calling");
 
     // Setting the current task to NULL indicates that the context switch
     // handler shouldn't save the context of the exited task.
@@ -278,7 +148,7 @@ static void prv_task_exit(void)
 
 static void prv_task_yield(void)
 {
-    usage_assert(state.is_started, "RTOS must be started before calling");
+    USAGE_ASSERT(state.is_started, "RTOS must be started before calling");
     state.curr_task->slice_left = RTOS_TICKS_PER_SLICE;
 
     // Only trigger a context switch if there's another ready task.
@@ -292,8 +162,8 @@ static void prv_task_yield(void)
 
 static void prv_task_sleep(size_t ticks)
 {
-    usage_assert(state.is_started, "RTOS must be started before calling");
-    usage_assert(ticks > 0, "Number of ticks must be greater than zero");
+    USAGE_ASSERT(state.is_started, "RTOS must be started before calling");
+    USAGE_ASSERT(ticks > 0, "Number of ticks must be greater than zero");
 
     state.curr_task->wake_time = state.tick_count + ticks;
     state.curr_task->state = RTOS_TASKSTATE_SLEEPING;
@@ -304,94 +174,91 @@ static void prv_task_sleep(size_t ticks)
 
 static void prv_task_suspend(void)
 {
-    usage_assert(state.is_started, "RTOS must be started before calling");
+    USAGE_ASSERT(state.is_started, "RTOS must be started before calling");
     state.curr_task->state = RTOS_TASKSTATE_SUSPENDED;
     pend_context_switch();
 }
 
-static void prv_task_resume(struct rtos_task *task)
+static void prv_task_resume(rtos_task_t *task)
 {
-    usage_assert(task != NULL, "Passed NULL task handle");
+    USAGE_ASSERT(task != NULL, "Passed NULL task handle");
     if (!state.is_started || task->state != RTOS_TASKSTATE_SUSPENDED) {
         return;
     }
-    task->state = RTOS_TASKSTATE_READY;
-    dll_push_back(&state.ready_task_q[task->priority], task);
-    if (task->priority > state.curr_task->priority && !state.is_preempting) {
-        state.is_preempting = true;
-        state.curr_task->state = RTOS_TASKSTATE_READY;
-        dll_push_front(&state.ready_task_q[state.curr_task->priority],
-                       state.curr_task);
-        pend_context_switch();
-    }
+    make_task_ready(task);
 }
 
-static void prv_mutex_create(struct rtos_mutex *mutex)
+static void prv_mutex_create(struct rtos_mutex *mutex, size_t priority_ceil)
 {
+    USAGE_ASSERT(priority_ceil <= RTOS_MAX_TASK_PRIORITY, "");
     mutex->owner = NULL;
     mutex->blocked.head = NULL;
     mutex->blocked.tail = NULL;
+    mutex->priority_ceil = priority_ceil;
 }
 
 static void prv_mutex_destroy(struct rtos_mutex *mutex)
 {
-    usage_assert(mutex != NULL, "Passed NULL mutex handle");
-    usage_assert(mutex->owner == NULL,
+    USAGE_ASSERT(mutex != NULL, "Passed NULL mutex");
+    USAGE_ASSERT(mutex->owner == NULL,
                  "Destroying mutex that tasks are still waiting on");
-    assert(dll_is_empty(&mutex->blocked));
-}
-
-static void prv_mutex_lock(struct rtos_mutex *mutex)
-{
-    usage_assert(mutex != NULL, "Passed NULL mutex handle");
-    usage_assert(state.is_started, "RTOS must be started before calling");
-
-    usage_assert(mutex->owner != state.curr_task,
-                 "Attempt to double lock mutex");
-    if (mutex->owner != NULL) {
-        state.curr_task->state = RTOS_TASKSTATE_WAIT_MUTEX;
-        dll_push_back(&mutex->blocked, state.curr_task);
-        pend_context_switch();
-    } else {
-        mutex->owner = state.curr_task;
-    }
+    ASSERT(dll_is_empty(&mutex->blocked));
 }
 
 static bool prv_mutex_trylock(struct rtos_mutex *mutex)
 {
-    usage_assert(mutex != NULL, "Passed NULL mutex handle");
-    usage_assert(state.is_started, "RTOS must be started before calling");
-    if (mutex->owner != NULL) {
-        return false;
+    USAGE_ASSERT(mutex != NULL, "Passed NULL mutex");
+    USAGE_ASSERT(state.is_started, "RTOS must be started before calling");
+    USAGE_ASSERT(state.curr_task->priority <= mutex->priority_ceil,
+                 "Current task's priority is too high to lock mutex");
+    USAGE_ASSERT(mutex->owner != state.curr_task,
+                 "Attempt to double lock mutex");
+
+    bool got_mutex = false;
+    if (mutex->owner == NULL) {
+        ASSERT(dll_is_empty(&mutex->blocked));
+        state.curr_task->priority = mutex->priority_ceil;
+        mutex->owner = state.curr_task;
+        got_mutex = true;
     }
-    mutex->owner = state.curr_task;
-    return true;
+    return got_mutex;
+}
+
+static void prv_mutex_lock(struct rtos_mutex *mutex)
+{
+    USAGE_ASSERT(mutex != NULL, "Passed NULL mutex handle");
+    USAGE_ASSERT(state.is_started, "RTOS must be started before calling");
+    USAGE_ASSERT(state.curr_task->priority <= mutex->priority_ceil, "");
+    USAGE_ASSERT(mutex->owner != state.curr_task,
+                 "Attempt to double lock mutex");
+
+    if (!prv_mutex_trylock(mutex)) {
+        ASSERT(state.curr_task->state == RTOS_TASKSTATE_RUNNING);
+        state.curr_task->state = RTOS_TASKSTATE_WAIT_MUTEX;
+        state.curr_task->priority = mutex->priority_ceil;
+        dll_push_back(&mutex->blocked, state.curr_task);
+        pend_context_switch();
+    }
 }
 
 static void prv_mutex_unlock(struct rtos_mutex *mutex)
 {
-    usage_assert(mutex != NULL, "Passed NULL mutex handle");
-    usage_assert(state.is_started, "RTOS must be started before calling");
-    usage_assert(mutex->owner == state.curr_task,
+    USAGE_ASSERT(mutex != NULL, "Passed NULL mutex handle");
+    USAGE_ASSERT(state.is_started, "RTOS must be started before calling");
+    USAGE_ASSERT(mutex->owner == state.curr_task,
                  "Task other than owner tried to unlock mutex");
+
+    state.curr_task->priority = state.curr_task->def_priority;
 
     if (dll_is_empty(&mutex->blocked)) {
         // No tasks were waiting to aquire so the mutex becomes unlocked.
         mutex->owner = NULL;
     } else {
         // Pass the mutex to the unblocked task.
-        struct rtos_task *const unblocked = dll_pop_front(&mutex->blocked);
-        unblocked->state = RTOS_TASKSTATE_READY;
+        rtos_task_t *const unblocked = dll_pop_front(&mutex->blocked);
+        ASSERT(unblocked->state == RTOS_TASKSTATE_WAIT_MUTEX);
         mutex->owner = unblocked;
-        dll_push_back(&state.ready_task_q[unblocked->priority],
-                      unblocked);
-
-        if (unblocked->priority < state.curr_task->priority) {
-            state.curr_task->state = RTOS_TASKSTATE_READY;
-            dll_push_front(&state.ready_task_q[state.curr_task->priority],
-                           state.curr_task);
-            pend_context_switch();
-        }
+        make_task_ready(unblocked);
     }
 }
 
@@ -404,18 +271,18 @@ static void prv_cond_create(struct rtos_cond *cond)
 
 static void prv_cond_destroy(struct rtos_cond *cond)
 {
-    usage_assert(cond != NULL, "Passed NULL cond handle");
-    usage_assert(dll_is_empty(&cond->waiting),
+    USAGE_ASSERT(cond != NULL, "Passed NULL cond handle");
+    USAGE_ASSERT(dll_is_empty(&cond->waiting),
                  "Tried to destroy cond while there were tasks waiting on it");
-    assert(cond->mutex == NULL);
+    ASSERT(cond->mutex == NULL);
 }
 
 static void prv_cond_wait(struct rtos_cond *cond, struct rtos_mutex *mutex)
 {
-    usage_assert(cond != NULL, "Passed NULL cond handle");
-    usage_assert(mutex != NULL, "Passed NULL mutex handle");
-    usage_assert(state.is_started, "RTOS must be started before calling");
-    usage_assert(cond->mutex == NULL || cond->mutex == mutex, 
+    USAGE_ASSERT(cond != NULL, "Passed NULL cond handle");
+    USAGE_ASSERT(mutex != NULL, "Passed NULL mutex handle");
+    USAGE_ASSERT(state.is_started, "RTOS must be started before calling");
+    USAGE_ASSERT(cond->mutex == NULL || cond->mutex == mutex, 
                  "The cv is already associated with another mutex");
 
     prv_mutex_unlock(mutex);
@@ -428,7 +295,8 @@ static void prv_cond_wait(struct rtos_cond *cond, struct rtos_mutex *mutex)
 
 static void cond_wake_task(struct rtos_cond *cond)
 {
-    struct rtos_task *const waken = dll_pop_front(&cond->waiting);
+    rtos_task_t *const waken = dll_pop_front(&cond->waiting);
+    ASSERT(waken->state == RTOS_TASKSTATE_WAIT_COND);
     if (cond->mutex->owner == NULL) {
         cond->mutex->owner = waken;
         waken->state = RTOS_TASKSTATE_READY;
@@ -441,8 +309,8 @@ static void cond_wake_task(struct rtos_cond *cond)
 
 static void prv_cond_signal(struct rtos_cond *cond)
 {
-    usage_assert(cond != NULL, "Passed NULL cond handle");
-    usage_assert(state.is_started, "RTOS must be started before calling");
+    USAGE_ASSERT(cond != NULL, "Passed NULL cond handle");
+    USAGE_ASSERT(state.is_started, "RTOS must be started before calling");
     if (!dll_is_empty(&cond->waiting)) {
         cond_wake_task(cond);
     }
@@ -453,8 +321,8 @@ static void prv_cond_signal(struct rtos_cond *cond)
 
 static void prv_cond_broadcast(struct rtos_cond *cond)
 {
-    usage_assert(cond != NULL, "Passed NULL cond handle");
-    usage_assert(state.is_started, "RTOS must be started before calling");
+    USAGE_ASSERT(cond != NULL, "Passed NULL cond handle");
+    USAGE_ASSERT(state.is_started, "RTOS must be started before calling");
     while (!dll_is_empty(&cond->waiting)) {
         cond_wake_task(cond);
     }
@@ -465,19 +333,19 @@ static void prv_cond_broadcast(struct rtos_cond *cond)
  * Interrupt handlers
  * ------------------------------------------------------------------------- */
 
-__attribute((used)) static void svc_handler_main(size_t *stack)
+[[gnu::used]] static void svc_handler_main(exception_entry_stack_t *stack)
 {
     // The SVC number is encoded in the low byte of the SVC instruction. To
     // access it, the PC saved on the stack during exception entry is used.
-    const int svc_num = ((unsigned char *)stack[6])[-2];
+    const int svc_num = ((uint8_t *)stack->pc)[-2];
     size_t rv = 0;
     switch (svc_num) {
         case 0:
             prv_start();
             break;
         case 1:
-            prv_task_create((struct rtos_task *)stack[0],
-                                            (const struct rtos_task_settings *)stack[1]);
+            prv_task_create((rtos_task_t *)stack->r0,
+                            (const rtos_task_settings_t *)stack->r1);
             break;
         case 2:
             rv = (size_t)prv_task_self();
@@ -489,57 +357,57 @@ __attribute((used)) static void svc_handler_main(size_t *stack)
             prv_task_yield();
             break;
         case 5:
-            prv_task_sleep(stack[0]);
+            prv_task_sleep(stack->r0);
             break;
         case 6:
             prv_task_suspend();
             break;
         case 7:
-            prv_task_resume((void *)stack[0]);
+            prv_task_resume((void *)stack->r0);
             break;
         case 8:
-            prv_mutex_create((void *)stack[0]);
+            prv_mutex_create((void *)stack->r0, stack->r1);
             break;
         case 9:
-            prv_mutex_destroy((void *)stack[0]);
+            prv_mutex_destroy((void *)stack->r0);
             break;
         case 10:
-            prv_mutex_lock((void *)stack[0]);
+            prv_mutex_lock((void *)stack->r0);
             break;
         case 11:
-            rv = prv_mutex_trylock((void *)stack[0]);
+            rv = prv_mutex_trylock((void *)stack->r0);
             break;
         case 12:
-            prv_mutex_unlock((void *)stack[0]);
+            prv_mutex_unlock((void *)stack->r0);
             break;
         case 13:
-            prv_cond_create((void *)stack[0]);
+            prv_cond_create((void *)stack->r0);
             break;
         case 14:
-            prv_cond_destroy((void *)stack[0]);
+            prv_cond_destroy((void *)stack->r0);
             break;
         case 15:
-            prv_cond_wait((void *)stack[0], (void *)stack[1]);
+            prv_cond_wait((void *)stack->r0, (void *)stack->r1);
             break;
         case 16:
-            prv_cond_signal((void *)stack[0]);
+            prv_cond_signal((void *)stack->r0);
             break;
         case 17:
-            prv_cond_broadcast((void *)stack[0]);
+            prv_cond_broadcast((void *)stack->r0);
             break;
         default:
-            assert(false);
+            ASSERT(false);
             break;
     }
 
     // Store the return value in the part of the stack that gets popped to R0
     // when the handler returns.
-    stack[0] = rv;
+    stack->r0 = rv;
 }
 
-__attribute((naked)) void SVC_Handler(void)
+[[gnu::naked]] void SVC_Handler(void)
 {
-    asm volatile(
+    __asm volatile(
     "   tst     lr, #4              \n"
     "   ite     eq                  \n"
     "   mrseq   r0, msp             \n"
@@ -549,38 +417,43 @@ __attribute((naked)) void SVC_Handler(void)
 }
 
 // Returns a pointer to the next task's switch frame.
-__attribute((used)) static size_t *choose_next_task(size_t *old_switch_frame)
+[[gnu::used]] static void *choose_next_task(void *old_switch_frame)
 {
     if (state.curr_task != NULL) {
-        usage_assert((size_t)old_switch_frame >=
+        USAGE_ASSERT((size_t)old_switch_frame >=
                          (size_t)state.curr_task->stack_low,
                      "Task stack overflow");
-        assert(state.curr_task->state != RTOS_TASKSTATE_RUNNING);
+        ASSERT(state.curr_task->state != RTOS_TASKSTATE_RUNNING);
         state.curr_task->switch_frame = old_switch_frame;
     }
 
     // Choose the highest priority task that's ready to run next.
+    rtos_task_t *next_task = NULL;
     for (int i = RTOS_MAX_TASK_PRIORITY; i > -1; --i) {
         if (!dll_is_empty(&state.ready_task_q[i])) {
-            state.curr_task = dll_pop_front(&state.ready_task_q[i]);
+            next_task = dll_pop_front(&state.ready_task_q[i]);
             break;
         }
-        assert(i != 0);
+    }
+    if (next_task == NULL) {
+        // No tasks are ready to run. The idle task will be run instead.
+        next_task = &state.idle_task;
     }
 
-    assert(state.curr_task->state == RTOS_TASKSTATE_READY);
-    state.curr_task->state = RTOS_TASKSTATE_RUNNING;
+    ASSERT(next_task->state == RTOS_TASKSTATE_READY);
+    next_task->state = RTOS_TASKSTATE_RUNNING;
     state.is_preempting = false;
-    return state.curr_task->switch_frame;
+    state.curr_task = next_task;
+    return next_task->switch_frame;
 }
 
 // Interrupts are disabled during this to ensure an atomic context switch. This
 // is needed because PendSV has the lowest priority and otherwise, another
-// interrupt could preempt this handler and call a kernel function while the
+// interrupt could pre-empt this handler and call a kernel function while the
 // kernel state is invalid.
-__attribute__((naked)) void PendSV_Handler(void)
+[[gnu::naked]] void PendSV_Handler(void)
 {
-    asm volatile(
+    __asm volatile(
     "   cpsid       i               \n" // Disable interrupts to ensure atomic context switch.
     "                               \n"
     "   ldr         r1, =state      \n" // r1 = &state
@@ -644,8 +517,8 @@ void rtos_tick(void)
     while (!dll_is_empty(&state.sleeping_tasks) &&
            state.sleeping_tasks.head->wake_time <= state.tick_count)
     {
-        struct rtos_task *const waken = dll_pop_front(&state.sleeping_tasks);
-        assert(waken->state == RTOS_TASKSTATE_SLEEPING);
+        rtos_task_t *const waken = dll_pop_front(&state.sleeping_tasks);
+        ASSERT(waken->state == RTOS_TASKSTATE_SLEEPING);
         waken->state = RTOS_TASKSTATE_READY;
         dll_push_back(&state.ready_task_q[waken->priority], waken);
 
@@ -669,23 +542,24 @@ void rtos_tick(void)
 
 // Macro for SVC wrapper function implementations.
 #define svccall(num, name, ret, ...) \
-    __attribute((naked)) ret name(__VA_ARGS__) {    \
-        asm volatile(                               \
+    [[gnu::naked]] ret name(__VA_ARGS__) {          \
+        __asm volatile(                             \
         "   svc    "#num"   \n"                     \
         "   bx      lr      \n"                     \
         );                                          \
     }
 
 svccall(0,  rtos_start,         void,   void)
-svccall(1,  rtos_task_create,   void,   struct rtos_task *task,
-                                        const struct rtos_task_settings *settings)
-svccall(2,  rtos_task_self,     struct rtos_task *, void)
+svccall(1,  rtos_task_create,   void,   rtos_task_t *task,
+                                        const rtos_task_settings_t *settings)
+svccall(2,  rtos_task_self,     rtos_task_t *, void)
 svccall(3,  rtos_task_exit,     void,   void)
 svccall(4,  rtos_task_yield,    void,   void)
 svccall(5,  rtos_task_sleep,    void,   size_t ticks)
 svccall(6,  rtos_task_suspend,  void,   void)
-svccall(7,  rtos_task_resume,   void,   struct rtos_task *task)
-svccall(8,  rtos_mutex_create,  void,   struct rtos_mutex *mutex)
+svccall(7,  rtos_task_resume,   void,   rtos_task_t *task)
+svccall(8,  rtos_mutex_create,  void,   struct rtos_mutex *mutex,
+                                        size_t priority_ceil)
 svccall(9,  rtos_mutex_destroy, void,   struct rtos_mutex *task)
 svccall(10, rtos_mutex_lock,    void,   struct rtos_mutex *task)
 svccall(11, rtos_mutex_trylock, bool,   struct rtos_mutex *task)
@@ -697,9 +571,9 @@ svccall(15, rtos_cond_wait,     void,   struct rtos_cond *cond,
 svccall(16, rtos_cond_signal,   void,   struct rtos_cond *cond)
 svccall(17, rtos_cond_broadcast,void,   struct rtos_cond *cond)
 
-void rtos_task_resume_from_isr(struct rtos_task *task)
+void rtos_task_resume_from_isr(rtos_task_t *task)
 {
-    asm volatile("cpsid i");
+    cm4_disable_irq();
     prv_task_resume(task);
-    asm volatile("cpsie i");
+    cm4_enable_irq();
 }
