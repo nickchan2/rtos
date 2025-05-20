@@ -29,7 +29,9 @@ int main() {
 
         int last_count = 0;
         for (int i = 0; i < waiter_cnt; ++i) {
+            mutex->lock();
             cond->signal();
+            mutex->unlock();
             rtos::task::yield();
             mutex->lock();
             EXPECT(counter == ++last_count);

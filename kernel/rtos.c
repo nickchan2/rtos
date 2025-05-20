@@ -96,7 +96,8 @@ static void prv_task_exit(void) {
     USAGE_ASSERT(state.is_started, "RTOS must be started before calling");
 
     while (!tlist_is_empty(&state.curr_task->waiting_to_join)) {
-        rtos_tcb_t *const task = tlist_pop_front(&state.curr_task->waiting_to_join);
+        rtos_tcb_t *const task =
+            tlist_pop_front(&state.curr_task->waiting_to_join);
         ASSERT(task->state == RTOS_TASKSTATE_WAIT_JOIN);
         task->state = RTOS_TASKSTATE_READY;
         tpq_push_back(&state.ready_tasks, task);
@@ -157,8 +158,7 @@ static void prv_task_join(rtos_tcb_t *task) {
 static void prv_mutex_create(rtos_mutex_t *mutex, size_t priority_ceil) {
     USAGE_ASSERT(priority_ceil <= RTOS_MAX_TASK_PRIORITY, "");
     mutex->owner = NULL;
-    mutex->blocked.head = NULL;
-    mutex->blocked.tail = NULL;
+    tpq_init(&mutex->blocked);
     mutex->priority_ceil = priority_ceil;
 }
 
@@ -166,39 +166,91 @@ static void prv_mutex_destroy(rtos_mutex_t *mutex) {
     USAGE_ASSERT(mutex != NULL, "Passed NULL mutex");
     USAGE_ASSERT(mutex->owner == NULL,
                  "Destroying mutex that tasks are still waiting on");
-    ASSERT(tlist_is_empty(&mutex->blocked));
+    ASSERT(tpq_is_empty(&mutex->blocked));
 }
 
-static bool prv_mutex_trylock(rtos_mutex_t *mutex) {
-    USAGE_ASSERT(mutex != NULL, "Passed NULL mutex");
-    USAGE_ASSERT(state.is_started, "RTOS must be started before calling");
-    USAGE_ASSERT(state.curr_task->priority <= mutex->priority_ceil,
-                 "Current task's priority is too high to lock mutex");
-    USAGE_ASSERT(mutex->owner != state.curr_task,
-                 "Attempt to double lock mutex");
+static void mutex_lock_helper(rtos_mutex_t *mutex, rtos_tcb_t *task) {
+    task->priority = mutex->priority_ceil;
+    ++task->mutex_count;
+    mutex->owner = task;
+}
 
+static bool mutex_trylock_helper(rtos_mutex_t *mutex, rtos_tcb_t *task) {
     bool got_mutex = false;
     if (mutex->owner == NULL) {
-        ASSERT(tlist_is_empty(&mutex->blocked));
-        state.curr_task->priority = mutex->priority_ceil;
-        mutex->owner = state.curr_task;
+        mutex_lock_helper(mutex, task);        
         got_mutex = true;
     }
     return got_mutex;
 }
 
-static void prv_mutex_lock(rtos_mutex_t *mutex) {
-    USAGE_ASSERT(mutex != NULL, "Passed NULL mutex handle");
+static void mutex_unlock_helper(rtos_mutex_t *mutex) {
+    ASSERT(mutex->owner != NULL);
+
+    bool context_switch = false;
+
+    rtos_tcb_t *const old_owner = mutex->owner;
+    --old_owner->mutex_count;
+    if (old_owner->mutex_count == 0) {
+        old_owner->priority = old_owner->def_priority;
+        for (int i = old_owner->priority + 1; i <= RTOS_MAX_TASK_PRIORITY; ++i) {
+            if (!tlist_is_empty(&state.ready_tasks.tlists[i])) {
+                context_switch = true;
+                break;
+            }
+        }
+    }
+
+    rtos_tcb_t *const unblocked = tpq_pop_front(&mutex->blocked);
+    if (unblocked == NULL) {
+        // No tasks were waiting to aquire so the mutex becomes unlocked.
+        mutex->owner = NULL;
+    } else {
+        // Pass the mutex to the unblocked task.
+        ASSERT(unblocked->state == RTOS_TASKSTATE_WAIT_MUTEX);
+        mutex_lock_helper(mutex, unblocked);
+        unblocked->state = RTOS_TASKSTATE_READY;
+        tpq_push_back(&state.ready_tasks, unblocked);
+        if (unblocked->priority > state.curr_task->priority) {
+            context_switch = true;
+        }
+    }
+
+    if (context_switch) {
+        state.is_preempting = true;
+        state.curr_task->state = RTOS_TASKSTATE_READY;
+        tpq_push_front(&state.ready_tasks, state.curr_task);
+        pend_context_switch();
+    }
+}
+
+static bool prv_mutex_trylock(rtos_mutex_t *mutex) {
+    USAGE_ASSERT(mutex != NULL, "Passed NULL mutex");
     USAGE_ASSERT(state.is_started, "RTOS must be started before calling");
-    USAGE_ASSERT(state.curr_task->priority <= mutex->priority_ceil, "");
+    USAGE_ASSERT((state.curr_task->mutex_count == 0 &&
+                    state.curr_task->def_priority <= mutex->priority_ceil) ||
+                 state.curr_task->priority == mutex->priority_ceil,
+                 "Current task cannot lock mutex");
     USAGE_ASSERT(mutex->owner != state.curr_task,
                  "Attempt to double lock mutex");
 
-    if (!prv_mutex_trylock(mutex)) {
+    return mutex_trylock_helper(mutex, state.curr_task);
+}
+
+static void prv_mutex_lock(rtos_mutex_t *mutex) {
+    USAGE_ASSERT(mutex != NULL, "Passed NULL mutex handle");
+    USAGE_ASSERT(state.is_started, "RTOS must be started before calling");
+    USAGE_ASSERT((state.curr_task->mutex_count == 0 &&
+                    state.curr_task->def_priority <= mutex->priority_ceil) ||
+                 state.curr_task->priority == mutex->priority_ceil,
+                 "Current task cannot lock mutex");
+    USAGE_ASSERT(mutex->owner != state.curr_task,
+                 "Attempt to double lock mutex");
+
+    if (!mutex_trylock_helper(mutex, state.curr_task)) {
         ASSERT(state.curr_task->state == RTOS_TASKSTATE_RUNNING);
         state.curr_task->state = RTOS_TASKSTATE_WAIT_MUTEX;
-        state.curr_task->priority = mutex->priority_ceil;
-        tlist_push_back(&mutex->blocked, state.curr_task);
+        tpq_push_back(&mutex->blocked, state.curr_task);
         pend_context_switch();
     }
 }
@@ -209,18 +261,7 @@ static void prv_mutex_unlock(rtos_mutex_t *mutex) {
     USAGE_ASSERT(mutex->owner == state.curr_task,
                  "Task other than owner tried to unlock mutex");
 
-    state.curr_task->priority = state.curr_task->def_priority;
-
-    if (tlist_is_empty(&mutex->blocked)) {
-        // No tasks were waiting to aquire so the mutex becomes unlocked.
-        mutex->owner = NULL;
-    } else {
-        // Pass the mutex to the unblocked task.
-        rtos_tcb_t *const unblocked = tlist_pop_front(&mutex->blocked);
-        ASSERT(unblocked->state == RTOS_TASKSTATE_WAIT_MUTEX);
-        mutex->owner = unblocked;
-        make_task_ready(unblocked);
-    }
+    mutex_unlock_helper(mutex);
 }
 
 static void prv_cond_create(rtos_cond_t *cond) {
@@ -243,7 +284,7 @@ static void prv_cond_wait(rtos_cond_t *cond, rtos_mutex_t *mutex) {
     USAGE_ASSERT(cond->mutex == NULL || cond->mutex == mutex, 
                  "The cv is already associated with another mutex");
 
-    prv_mutex_unlock(mutex);
+    mutex_unlock_helper(mutex);
 
     cond->mutex = mutex;
     state.curr_task->state = RTOS_TASKSTATE_WAIT_COND;
@@ -254,19 +295,15 @@ static void prv_cond_wait(rtos_cond_t *cond, rtos_mutex_t *mutex) {
 static void cond_wake_task(rtos_cond_t *cond) {
     rtos_tcb_t *const waken = tlist_pop_front(&cond->waiting);
     ASSERT(waken->state == RTOS_TASKSTATE_WAIT_COND);
-    if (cond->mutex->owner == NULL) {
-        cond->mutex->owner = waken;
-        waken->state = RTOS_TASKSTATE_READY;
-        tpq_push_back(&state.ready_tasks, waken);
-    } else {
-        waken->state = RTOS_TASKSTATE_WAIT_MUTEX;
-        tlist_push_back(&cond->mutex->blocked, waken);
-    }
+    waken->state = RTOS_TASKSTATE_WAIT_MUTEX;
+    tpq_push_back(&cond->mutex->blocked, waken);
 }
 
 static void prv_cond_signal(rtos_cond_t *cond) {
     USAGE_ASSERT(cond != NULL, "Passed NULL cond handle");
     USAGE_ASSERT(state.is_started, "RTOS must be started before calling");
+    USAGE_ASSERT(cond->mutex->owner == state.curr_task,
+                 "Task must have the associated mutex");
     if (!tlist_is_empty(&cond->waiting)) {
         cond_wake_task(cond);
         if (tlist_is_empty(&cond->waiting)) {
@@ -278,6 +315,8 @@ static void prv_cond_signal(rtos_cond_t *cond) {
 static void prv_cond_broadcast(rtos_cond_t *cond) {
     USAGE_ASSERT(cond != NULL, "Passed NULL cond handle");
     USAGE_ASSERT(state.is_started, "RTOS must be started before calling");
+    USAGE_ASSERT(cond->mutex->owner == state.curr_task,
+                 "Task must have the associated mutex");
     while (!tlist_is_empty(&cond->waiting)) {
         cond_wake_task(cond);
     }
@@ -453,8 +492,8 @@ static void prv_mqueue_dequeue(rtos_mqueue_t *mqueue, void *data) {
 }
 
 // Returns a pointer to the next task's switch frame.
-[[gnu::used]] static switch_frame_t *choose_next_task(
-    switch_frame_t *old_switch_frame)
+[[gnu::used]] static stack_frame_switch_t *choose_next_task(
+    stack_frame_switch_t *old_switch_frame)
 {
     if (state.curr_task != NULL) {
         USAGE_ASSERT((size_t)old_switch_frame >=
@@ -490,7 +529,7 @@ static void prv_mqueue_dequeue(rtos_mqueue_t *mqueue, void *data) {
 static_assert(NULL == 0, "Assembly assumes NULL == 0");
 [[gnu::naked]] void PendSV_Handler(void) {
     __asm volatile(
-    "   cpsid       i               \n" // Disable interrupts to ensure atomic context switch.
+    "   cpsid       i               \n" // Disable interrupts
     "                               \n"
     "   ldr         r1, =state      \n" // r1 = &state
     "                               \n"

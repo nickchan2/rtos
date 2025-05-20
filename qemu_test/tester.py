@@ -14,18 +14,22 @@ TESTS: List[str] = [
     "test_context_switch_regs",
     "test_two_tasks_yielding",
     "test_basic_sleep",
+    "test_task_sleep_wake_ordering_based_on_time",
+    "test_task_sleep_wake_ordering_based_on_priority",
     "test_starved_task",
     "test_task_exit",
     "test_time_slicing",
     "test_basic_task_join",
     "test_fp_context_switch",
-    "test_basic_mutex_trylock",
-    "test_basic_mutex_block",
+    "test_mutex_sanity",
+    "test_mutex_basic_trylock",
+    "test_mutex_basic_block",
+    "test_mutex_aquire_order_based_on_priority",
+    "test_mutex_priority_change",
+    "test_mutex_ipcp_prevents_priority_inversion_deadlock",
     "test_basic_suspend_resume",
     "test_cond_signal",
     "test_cond_broadcast",
-    "test_priority_change",
-    "test_no_priority_inversion_deadlock",
     "test_privilege_disable_irq",
     "test_mqueue_basic",
     "test_mqueue_waiting",
@@ -50,6 +54,7 @@ def run_qemu(test: str, output_q: mp.Queue, qemu_pid_q: mp.Queue) -> None:
         stdin=subprocess.PIPE,
         text=True,
     )
+    assert qemu.stdout is not None          
 
     qemu_pid_q.put(qemu.pid)
 
@@ -76,11 +81,11 @@ def build_test(test: str, optimize: bool) -> Optional[str]:
     return None if result.returncode == 0 else result.stdout + result.stderr
 
 def run_test(test: str, optimize: bool) -> bool:
-    print("\n------------------------------------------")
+    print("\n-----------------------------------------------------------")
     print(f"{Ansi.BOLD}Test: {test}{Ansi.RESET}")
     print("Building test...")
-    build_error = build_test(test, optimize)
-    if build_error:
+    
+    if build_error := build_test(test, optimize):
         print("\nBuild failed with output:")
         print(build_error)
         print(f"{Ansi.RED}Test failed{Ansi.RESET}")

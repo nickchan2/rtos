@@ -47,19 +47,24 @@ typedef struct {
     struct rtos_tcb *tail;
 } rtos_tlist_t;
 
+typedef struct {
+    rtos_tlist_t tlists[RTOS_NUM_PRIORITY_LEVELS];
+} rtos_tpq_t;
+
 typedef struct rtos_tcb {
-    switch_frame_t *    switch_frame;
-    size_t *            stack_low;
-    size_t              priority;
-    size_t              def_priority;
-    size_t              slice_left;
-    size_t              wake_time;
-    rtos_taskstate_t    state;
-    rtos_tlist_t        waiting_to_join;
-    uint8_t *           mqueue_data;
-    bool                privileged;
-    struct rtos_tcb *   prev;
-    struct rtos_tcb *   next;
+    stack_frame_switch_t *  switch_frame;
+    size_t *                stack_low;
+    size_t                  priority;
+    size_t                  def_priority;
+    size_t                  slice_left;
+    size_t                  wake_time;
+    rtos_taskstate_t        state;
+    rtos_tlist_t            waiting_to_join;
+    size_t                  mutex_count;
+    uint8_t *               mqueue_data;
+    bool                    privileged;
+    struct rtos_tcb *       prev;
+    struct rtos_tcb *       next;
 } rtos_tcb_t;
 
 typedef struct {
@@ -73,7 +78,7 @@ typedef struct {
 
 typedef struct {
     rtos_tcb_t *owner;
-    rtos_tlist_t blocked;
+    rtos_tpq_t blocked;
     size_t priority_ceil;
 } rtos_mutex_t;
 

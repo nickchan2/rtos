@@ -27,7 +27,9 @@ int main() {
         // Ensure all waiters are waiting before signaling
         rtos::task::sleep(100);
 
+        mutex->lock();
         cond->broadcast();
+        mutex->unlock();
         rtos::task::sleep(100);
         mutex->lock();
         EXPECT(counter == waiter_cnt);

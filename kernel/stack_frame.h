@@ -54,9 +54,9 @@ typedef struct {
     size_t lr;
     size_t pc;
     size_t xpsr;
-} switch_frame_nofp_t;
+} stack_frame_switch_nofp_t;
 
-static_assert(sizeof(switch_frame_nofp_t) == 4 * 17, "");
+static_assert(sizeof(stack_frame_switch_nofp_t) == 4 * 17, "");
 
 typedef struct {
     // Saved by context switch handler
@@ -71,14 +71,14 @@ typedef struct {
     size_t xpsr;
     float  s0_s15[16];
     size_t fpscr;
-} switch_frame_fp_t;
+} stack_frame_switch_fp_t;
 
-static_assert(sizeof(switch_frame_fp_t) == 4 * 50, "");
+static_assert(sizeof(stack_frame_switch_fp_t) == 4 * 50, "");
 
 typedef union {
-    switch_frame_nofp_t nofp;
-    switch_frame_fp_t fp;
-} switch_frame_t;
+    stack_frame_switch_nofp_t nofp;
+    stack_frame_switch_fp_t fp;
+} stack_frame_switch_t;
 
 typedef struct {
     size_t r0;
