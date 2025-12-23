@@ -3,18 +3,22 @@
 
 #include <optional>
 
-static std::optional<rtos::Mutex> mutex;
+namespace {
+
+std::optional<rtos::Mutex> mutex;
+
+} // namespace
 
 int main() {
     rtos_test::setup();
     mutex.emplace(1);
 
     rtos_test::TaskWithStack task0(1, false, []{
-        CHECKPOINT(1);
+        rtos_test::checkpoint(1);
         rtos::task::suspend();
-        CHECKPOINT(4);
+        rtos_test::checkpoint(4);
         mutex->lock();
-        CHECKPOINT(6);
+        rtos_test::checkpoint(6);
         rtos_test::pass();
     });
 
@@ -24,14 +28,14 @@ int main() {
     });
 
     rtos_test::TaskWithStack task2(0, false, &task0, [](void *arg){
-        CHECKPOINT(2);
+        rtos_test::checkpoint(2);
         mutex->lock();
-        CHECKPOINT(3);
+        rtos_test::checkpoint(3);
         rtos::task::resume(static_cast<rtos::Task *>(arg));
         rtos::task::sleep(20);
-        CHECKPOINT(5);
+        rtos_test::checkpoint(5);
         mutex->unlock();
-        FAIL("Task should be preempted");
+        rtos_test::fail("Task should be preempted");
     });
 
     rtos::start();

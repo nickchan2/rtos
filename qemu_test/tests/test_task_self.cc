@@ -1,9 +1,13 @@
 #include "rtos_test.hh"
 
-static void task_function(void *task_ptr) {
+namespace {
+
+void task_function(void *task_ptr) {
     EXPECT(rtos::task::self() == task_ptr);
     rtos_test::pass();
 }
+
+} // namespace
 
 int main() {
     rtos_test::setup();

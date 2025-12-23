@@ -2,11 +2,15 @@
 
 #include <optional>
 
-static const int waiter_cnt = 4;
+constexpr int waiter_cnt = 4;
 
-static volatile int counter = 0;
-static std::optional<rtos::Cond> cond;
-static std::optional<rtos::Mutex> mutex;
+namespace {
+
+volatile int counter = 0;
+std::optional<rtos::Cond> cond;
+std::optional<rtos::Mutex> mutex;
+
+} // namespace
 
 int main() {
     rtos_test::setup();
@@ -18,7 +22,7 @@ int main() {
         waiter.emplace(0, false, []{
             mutex->lock();
             cond->wait(*mutex);
-            ++counter;
+            counter = counter + 1;
             mutex->unlock();
         });
     }

@@ -3,17 +3,23 @@
 
 #include <optional>
 
-static std::optional<rtos::Mutex> mutex;
+namespace {
+
+std::optional<rtos::Mutex> mutex;
+std::optional<rtos_test::TaskWithStack<>> task_0;
+std::optional<rtos_test::TaskWithStack<>> task_1;
+
+} // namespace
 
 int main() {
     rtos_test::setup();
 
     mutex.emplace(0);
 
-    rtos_test::TaskWithStack task0(0, false, []{
-        CHECKPOINT(1);
+    task_0.emplace(0, false, []{
+        rtos_test::checkpoint(1);
         mutex->lock();
-        CHECKPOINT(2);
+        rtos_test::checkpoint(2);
         
         // Sleep while having the lock
         rtos::task::sleep(rtos::ticks_per_slice * 2);
@@ -21,14 +27,14 @@ int main() {
         mutex->unlock();
     });
 
-    rtos_test::TaskWithStack task1(0, false, []{
+    task_1.emplace(0, false, []{
         // Ensure that task0 gets the lock first
         rtos::task::yield();
-        CHECKPOINT(3);
+        rtos_test::checkpoint(3);
 
         const int time_before = HAL_GetTick();
         mutex->lock();
-        CHECKPOINT(4);
+        rtos_test::checkpoint(4);
         const int elapsed = HAL_GetTick() - time_before;
         EXPECT(elapsed >= static_cast<int>(rtos::ticks_per_slice) * 2 - 1);
         rtos_test::pass();

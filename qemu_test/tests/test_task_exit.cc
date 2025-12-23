@@ -2,8 +2,12 @@
 
 #include <stddef.h>
 
+namespace {
+
 static volatile bool task0_entered = false;
 static volatile bool task1_entered = false;
+
+} // namespace
 
 int main() {
     rtos_test::setup();

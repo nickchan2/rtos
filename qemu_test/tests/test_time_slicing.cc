@@ -1,11 +1,15 @@
 #include "rtos.hh"
 #include "rtos_test.hh"
 
-static volatile int counter = 0;
+namespace {
+
+volatile int counter = 0;
+
+} // namespace
 
 static void task_function() {
     while (true) {
-        ++counter;
+        counter = counter + 1;
         const int last_count = counter;
         const int last_time = HAL_GetTick();
         while (counter == last_count) {}

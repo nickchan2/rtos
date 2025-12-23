@@ -3,7 +3,11 @@
 
 #include <optional>
 
-static std::optional<rtos::Mutex> mutex;
+namespace {
+
+std::optional<rtos::Mutex> mutex;
+
+} // namespace
 
 int main() {
     rtos_test::setup();
@@ -11,29 +15,29 @@ int main() {
     mutex.emplace(1);
 
     rtos_test::TaskWithStack task0(0, false, []{
-        CHECKPOINT(3);
+        rtos_test::checkpoint(3);
         mutex->lock();
-        CHECKPOINT(8);
+        rtos_test::checkpoint(8);
         mutex->unlock();
-        CHECKPOINT(9);
+        rtos_test::checkpoint(9);
         rtos_test::pass();
     });
 
     rtos_test::TaskWithStack task1(1, false, []{
         rtos::task::sleep(10);
-        CHECKPOINT(4);
+        rtos_test::checkpoint(4);
         mutex->lock();
-        CHECKPOINT(6);
+        rtos_test::checkpoint(6);
         mutex->unlock();
-        CHECKPOINT(7);
+        rtos_test::checkpoint(7);
     });
 
     rtos_test::TaskWithStack task2(1, false, []{
-        CHECKPOINT(1);
+        rtos_test::checkpoint(1);
         mutex->lock();
-        CHECKPOINT(2);
+        rtos_test::checkpoint(2);
         rtos::task::sleep(20);
-        CHECKPOINT(5);
+        rtos_test::checkpoint(5);
         mutex->unlock();
     });
 

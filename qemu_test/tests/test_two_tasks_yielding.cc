@@ -1,11 +1,13 @@
 #include "rtos_test.hh"
 
-static volatile int counter = 0;
+namespace {
 
-static void task_function() {
+volatile int counter = 0;
+
+void task_function() {
     int last = counter;
     while (true) {
-        ++counter;
+        counter = counter + 1;
         if (counter > 100) {
             rtos_test::pass();
         }
@@ -14,6 +16,8 @@ static void task_function() {
         EXPECT(counter == last + 1);
     }
 }
+
+} // namespace
 
 int main() {
     rtos_test::setup();

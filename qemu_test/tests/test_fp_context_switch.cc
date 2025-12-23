@@ -1,7 +1,7 @@
 #include "rtos_test.hh"
 
-static bool fp_active() {
-    return (__get_CONTROL() & 1U << 2U) != 0;
+inline bool fp_active() {
+    return (__get_CONTROL() & (1U << 2U)) != 0;
 }
 
 int main() {

@@ -1,7 +1,6 @@
 #include "rtos.hh"
 #include "rtos_test.hh"
 
-
 int main() {
     rtos_test::setup();
 

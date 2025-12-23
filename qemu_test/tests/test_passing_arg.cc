@@ -1,6 +1,10 @@
 #include "rtos_test.hh"
 
-static void *const passed = reinterpret_cast<void *>(0xDEADBEEFU);
+namespace {
+
+void *const passed = reinterpret_cast<void *>(0xDEADBEEFU);
+
+} // namespace
 
 int main(void) {
     rtos_test::setup();

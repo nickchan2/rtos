@@ -4,8 +4,12 @@
 #include <cstdint>
 #include <optional>
 
+namespace {
+
 std::optional<rtos::Mqueue<int32_t, 1>> mqueue_i32;
 std::optional<rtos::Mqueue<int64_t, 1>> mqueue_i64;
+
+} // namespace
 
 int main() {
     rtos_test::setup();

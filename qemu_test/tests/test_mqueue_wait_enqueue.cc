@@ -5,9 +5,13 @@
 
 constexpr int enqueue_task_count = 10;
 
-static volatile int counter = 0;
-static std::optional<rtos::Mutex> mutex;
-static std::optional<rtos::Mqueue<int, 1>> mqueue;
+namespace {
+
+volatile int counter = 0;
+std::optional<rtos::Mutex> mutex;
+std::optional<rtos::Mqueue<int, 1>> mqueue;
+
+} // namespace
 
 int main() {
     rtos_test::setup();
@@ -21,7 +25,7 @@ int main() {
             int local_counter = 0;
             mutex->lock();
             local_counter = counter;
-            ++counter;
+            counter = counter + 1;
             mutex->unlock();
             mqueue->enqueue(local_counter);
         });

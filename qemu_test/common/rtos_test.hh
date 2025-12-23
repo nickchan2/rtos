@@ -5,17 +5,15 @@
 #include "stm32f4xx_hal.h" // IWYU pragma: export
 
 #include <cstddef>
-
-#define FAIL(msg) rtos_test::fail(msg, __FILE__, __LINE__)
+#include <source_location>
+#include <string_view>
 
 #define EXPECT(cond) \
     do { \
         if (!(cond)) { \
-            FAIL("Expected " #cond); \
+            rtos_test::fail("Expected " #cond); \
         } \
     } while (false)
-
-#define CHECKPOINT(num) rtos_test::checkpoint(num, __FILE__, __LINE__)
 
 namespace rtos_test {
 
@@ -61,16 +59,26 @@ void start_timer();
 
 [[noreturn]] void expect_hardfault_to_pass(void (*func)());
 
-[[noreturn]] void fail(const char *msg, const char *file, int line);
+[[noreturn]] void fail(
+    std::string_view msg,
+    std::source_location location = std::source_location::current()
+);
 
-void checkpoint(int num, const char *file, int line);
+void checkpoint(
+    int num,
+    std::source_location location = std::source_location::current()
+);
 
 } // namespace rtos_test
 
-extern "C" [[gnu::used]] inline void rtos_test_pass_asm() {
+extern "C" {
+
+[[gnu::used]] inline void rtos_test_pass_asm() {
     rtos_test::pass();
 }
 
-extern "C" [[gnu::used]] inline void rtos_test_fail_asm() {
-    rtos_test::fail("Failed in asm", "<unknown>", 0);
+[[gnu::used]] inline void rtos_test_fail_asm() {
+    rtos_test::fail("Failed in asm");
 }
+
+} // extern "C"

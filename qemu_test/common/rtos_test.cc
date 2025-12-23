@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <optional>
+#include <string_view>
 
 namespace {
 
@@ -100,7 +101,7 @@ void checkpoint(const CheckPointArgs &args) {
                       last + 1);
         test_failed({msg.data(), args.file, args.line});
     }
-    ++last;
+    last = last + 1;
 }
 
 } // namespace
@@ -120,8 +121,12 @@ void rtos_test::start_timer() {
     HAL_TIM_Base_Start_IT(&htim2);
 }
 
-void rtos_test::checkpoint(int num, const char *file, int line) {
-    checkpoint_syscall({num, file, line});
+void rtos_test::checkpoint(int num, std::source_location location) {
+    checkpoint_syscall({
+        num,
+        location.file_name(),
+        static_cast<int>(location.line())
+    });
 }
 
 [[gnu::naked]] void rtos_test::pass() {
@@ -131,22 +136,29 @@ void rtos_test::checkpoint(int num, const char *file, int line) {
 void rtos_test::expect_hardfault_to_pass(void (*func)()) {
     hardfault_expected = true;
     func();
-    FAIL("Expected hardfault");
+    fail("Expected hardfault");
 }
 
-void rtos_test::fail(const char *msg, const char *file, int line) {
-    test_failed_syscall({msg, file, line});
+void rtos_test::fail(std::string_view msg, std::source_location location) {
+    test_failed_syscall({
+        msg.data(),
+        location.file_name(),
+        static_cast<int>(location.line())
+    });
 }
 
-extern "C" void rtos_failed_assert(const char *cond, const char *file,
-                                   int line) {
+extern "C" {
+
+// RTOS hooks
+
+void rtos_failed_assert(const char *cond, const char *file, int line) {
     __disable_irq();
     printf("Assertion fail: %s (%s:%d)\r\n", cond, file, line);
     test_finished();
 }
 
-extern "C" void rtos_failed_usage_assert(const char *cond, const char *file,
-                                         int line, const char *msg)
+void rtos_failed_usage_assert(const char *cond, const char *file, int line,
+                              const char *msg)
 {
     __disable_irq();
     std::printf("RTOS usage assertion fail: (%s:%d)\r\n", file, line);
@@ -154,7 +166,7 @@ extern "C" void rtos_failed_usage_assert(const char *cond, const char *file,
     test_finished();
 }
 
-extern "C" size_t debug_syscall(void *arg, int svc_num) {
+size_t debug_syscall(void *arg, int svc_num) {
     __disable_irq();
     switch (svc_num) {
         case 128:
@@ -173,12 +185,14 @@ extern "C" size_t debug_syscall(void *arg, int svc_num) {
     return 0;
 }
 
-extern "C" void SysTick_Handler(void) {
+// Interrupt handlers
+
+void SysTick_Handler(void) {
     HAL_IncTick();
     rtos::tick();
 }
 
-extern "C" void TIM2_IRQHandler(void) {
+void TIM2_IRQHandler(void) {
     if (timer_callback.has_value()) {
         timer_callback.value()();
     }
@@ -186,15 +200,15 @@ extern "C" void TIM2_IRQHandler(void) {
 }
 
 #define FAULT_HANDLER(fault_name) \
-    extern "C" void fault_name##_Handler() { \
+    void fault_name##_Handler() { \
         puts(#fault_name); \
         test_finished(); \
     }
 
-FAULT_HANDLER(MemManage_Handler)
+FAULT_HANDLER(MemManage)
 FAULT_HANDLER(UsageFault)
 
-extern "C" void HardFault_Handler() {
+void HardFault_Handler() {
     if (hardfault_expected) {
         test_passed();
     } else {
@@ -202,3 +216,5 @@ extern "C" void HardFault_Handler() {
         test_finished();
     }
 }
+
+} // extern "C"

@@ -64,6 +64,7 @@ struct Cond {
 
 template<typename T, size_t slots>
 struct Mqueue {
+    // Copy semantics when enqueuing, move semantics when dequeuing
     static_assert(std::is_trivially_copy_assignable_v<T>);
     static_assert(std::is_trivially_move_assignable_v<T>);
 

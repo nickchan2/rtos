@@ -2,7 +2,7 @@
 
 int main() {
     rtos_test::setup();
-    CHECKPOINT(1);
-    CHECKPOINT(2);
+    rtos_test::checkpoint(1);
+    rtos_test::checkpoint(2);
     rtos_test::pass();
 }
