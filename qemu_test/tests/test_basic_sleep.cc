@@ -1,12 +1,14 @@
 #include "rtos_test.hh"
 
-int main() {
+#include <cstdint>
+
+auto main() -> int {
     rtos_test::setup();
-    rtos_test::TaskWithStack task(0, false, []{
+    [[maybe_unused]] static auto task = rtos_test::TaskWithStack(0, false, []{
         for (int i = 0; i < 10; ++i) {
-            const int time_before_sleep = HAL_GetTick();
-            rtos::task::sleep(5);
-            const int elapsed = HAL_GetTick() - time_before_sleep;
+            const uint32_t elapsed = rtos_test::measure_ticks([] {
+                rtos::task::sleep(5);
+            });
             EXPECT(elapsed >= 5);
         }
         rtos_test::pass();

@@ -1,42 +1,32 @@
 #include "rtos.hh"
 #include "rtos_test.hh"
 
-#include <optional>
-
-namespace {
-
-std::optional<rtos::Mutex> mutex;
-std::optional<rtos_test::TaskWithStack<>> task_0;
-std::optional<rtos_test::TaskWithStack<>> task_1;
-
-} // namespace
-
-int main() {
+auto main() -> int {
     rtos_test::setup();
 
-    mutex.emplace(0);
+    static auto mutex = rtos::Mutex(0);
 
-    task_0.emplace(0, false, []{
+    [[maybe_unused]] static auto task0 = rtos_test::TaskWithStack(0, false, []{
         rtos_test::checkpoint(1);
-        mutex->lock();
+        mutex.lock();
         rtos_test::checkpoint(2);
         
         // Sleep while having the lock
         rtos::task::sleep(rtos::ticks_per_slice * 2);
 
-        mutex->unlock();
+        mutex.unlock();
     });
 
-    task_1.emplace(0, false, []{
+    [[maybe_unused]] static auto task1 = rtos_test::TaskWithStack(0, false, []{
         // Ensure that task0 gets the lock first
         rtos::task::yield();
         rtos_test::checkpoint(3);
 
-        const int time_before = HAL_GetTick();
-        mutex->lock();
-        rtos_test::checkpoint(4);
-        const int elapsed = HAL_GetTick() - time_before;
+        const uint32_t elapsed = rtos_test::measure_ticks([]{
+            mutex.lock();
+        });
         EXPECT(elapsed >= static_cast<int>(rtos::ticks_per_slice) * 2 - 1);
+        rtos_test::checkpoint(4);
         rtos_test::pass();
     });
 

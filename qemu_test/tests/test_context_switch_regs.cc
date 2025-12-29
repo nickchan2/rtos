@@ -1,13 +1,11 @@
 #include "rtos.hh"
 #include "rtos_test.hh"
 
-asm(
-    ".section .data \n"
-    "counter:       \n"
-    "   .word 0     \n"
-);
+extern "C" {
+[[gnu::used]] volatile int counter = 0;
+} // extern "C"
 
-[[gnu::naked]] static void task0_function() {
+[[gnu::naked]] static auto task0_function() -> void {
     asm volatile(
         // Ensure this task is entered first
         "   ldr     r0, =counter            \n"
@@ -117,7 +115,7 @@ asm(
     );
 }
 
-[[gnu::naked]] static void task1_function() {
+[[gnu::naked]] static auto task1_function() -> void {
     asm volatile(
         // Ensure this task is entered second
         "   ldr     r0, =counter            \n"
@@ -150,9 +148,9 @@ asm(
     );
 }
 
-int main() {
+auto main() -> int {
     rtos_test::setup();
-    rtos_test::TaskWithStack task0(1, false, task0_function);
-    rtos_test::TaskWithStack task1(1, false, task1_function);
+    [[maybe_unused]] static auto task0 = rtos_test::TaskWithStack(0, false, task0_function);
+    [[maybe_unused]] static auto task1 = rtos_test::TaskWithStack(0, false, task1_function);
     rtos::start();
 }

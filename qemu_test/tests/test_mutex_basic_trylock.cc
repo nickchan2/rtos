@@ -1,38 +1,30 @@
 #include "rtos_test.hh"
 
-#include <optional>
-
-namespace {
-
-std::optional<rtos::Mutex> mutex;
-
-} // namespace
-
-int main() {
+auto main() -> int {
     rtos_test::setup();
 
-    mutex.emplace();
+    static auto mutex = rtos::Mutex();
 
-    rtos_test::TaskWithStack task0(0, false, []{
+    [[maybe_unused]] static auto task0 = rtos_test::TaskWithStack(0, false, []{
         rtos_test::checkpoint(1);
-        mutex->lock();
+        mutex.lock();
         rtos_test::checkpoint(2);
         rtos::task::sleep(5);
         rtos_test::checkpoint(5);
-        mutex->unlock();
+        mutex.unlock();
         rtos_test::checkpoint(6);
     });
 
-    rtos_test::TaskWithStack task1(0, false, []{
+    [[maybe_unused]] static auto task1 = rtos_test::TaskWithStack(0, false, []{
         // Ensure that task0 gets the lock first
         rtos::task::yield();
         rtos_test::checkpoint(3);
-        bool got_lock = mutex->trylock();
+        bool got_lock = mutex.trylock();
         EXPECT(!got_lock);
         rtos_test::checkpoint(4);
         rtos::task::sleep(10);
         rtos_test::checkpoint(7);
-        got_lock = mutex->trylock();
+        got_lock = mutex.trylock();
         EXPECT(got_lock);
         rtos_test::pass();
     });

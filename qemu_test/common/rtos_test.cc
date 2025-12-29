@@ -22,16 +22,16 @@ struct CheckPointArgs {
     int line;
 };
 
-TIM_HandleTypeDef htim2;
-std::optional<void(*)()> timer_callback;
+auto htim2 = TIM_HandleTypeDef();
+auto timer_callback = std::optional<void(*)()>();
 bool hardfault_expected = false;
 
-[[noreturn]] void test_finished() {
+[[noreturn]] auto test_finished() -> void {
     puts("<Test finished>");
     while (true) {}
 }
 
-void tim2_init() {
+auto tim2_init() -> void {
     __HAL_RCC_TIM2_CLK_ENABLE();
 
     htim2.Instance = TIM2;
@@ -47,7 +47,7 @@ void tim2_init() {
     HAL_NVIC_EnableIRQ(TIM2_IRQn);
 }
 
-void uart_init() {
+auto uart_init() -> void {
     __USART2_CLK_ENABLE();
     huart.Instance          = USART1;
     huart.Init.BaudRate     = 115200;
@@ -59,7 +59,7 @@ void uart_init() {
     HAL_UART_Init(&huart);
 }
 
-void configure_nvic_for_rtos() {
+auto configure_nvic_for_rtos() -> void {
     HAL_NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_4);
     HAL_NVIC_SetPriority(SVCall_IRQn, 7, 0);
     HAL_NVIC_SetPriority(TIM2_IRQn, 8, 0);
@@ -67,30 +67,30 @@ void configure_nvic_for_rtos() {
     HAL_NVIC_SetPriority(PendSV_IRQn, 15, 0); // Lowest possible priority
 }
 
-[[noreturn, gnu::naked]] void test_failed_syscall(const FailArgs &args) {
+[[noreturn, gnu::naked]] auto test_failed_syscall(const FailArgs &args) -> void {
     asm volatile("svc 130");
 }
 
-[[noreturn]] void test_failed(const FailArgs &args) {
+[[noreturn]] auto test_failed(const FailArgs &args) -> void {
     __disable_irq();
     std::printf("Fail: (%s:%d)\r\n", args.file, args.line);
     std::printf("%s\r\n", args.msg);
     test_finished();
 }
 
-void test_passed() {
+auto test_passed() -> void {
     puts("Pass");
     test_finished();
 }
 
-[[gnu::naked]] void checkpoint_syscall(const CheckPointArgs &args) {
+[[gnu::naked]] auto checkpoint_syscall(const CheckPointArgs &args) -> void {
     asm volatile(
         "svc 128    \n"
         "bx lr      \n"
     );
 }
 
-void checkpoint(const CheckPointArgs &args) {
+auto checkpoint(const CheckPointArgs &args) -> void {
     static volatile int last = 0;
     if (args.num != last + 1) {
         std::array<char, 64> msg;
@@ -106,22 +106,22 @@ void checkpoint(const CheckPointArgs &args) {
 
 } // namespace
 
-void rtos_test::setup() {
+auto rtos_test::setup() -> void {
     HAL_Init();
     uart_init();
     tim2_init();
     configure_nvic_for_rtos();
 }
 
-void rtos_test::set_timer_callback(void (*callback)()) {
+auto rtos_test::set_timer_callback(void (*callback)()) -> void {
     timer_callback = callback;
 }
 
-void rtos_test::start_timer() {
+auto rtos_test::start_timer() -> void {
     HAL_TIM_Base_Start_IT(&htim2);
 }
 
-void rtos_test::checkpoint(int num, std::source_location location) {
+auto rtos_test::checkpoint(int num, std::source_location location) -> void {
     checkpoint_syscall({
         num,
         location.file_name(),
@@ -129,17 +129,17 @@ void rtos_test::checkpoint(int num, std::source_location location) {
     });
 }
 
-[[gnu::naked]] void rtos_test::pass() {
+[[gnu::naked]] auto rtos_test::pass() -> void {
     asm volatile("svc 129");
 }
 
-void rtos_test::expect_hardfault_to_pass(void (*func)()) {
+auto rtos_test::expect_hardfault_to_pass(void (*func)()) -> void {
     hardfault_expected = true;
     func();
     fail("Expected hardfault");
 }
 
-void rtos_test::fail(std::string_view msg, std::source_location location) {
+auto rtos_test::fail(std::string_view msg, std::source_location location) -> void {
     test_failed_syscall({
         msg.data(),
         location.file_name(),
@@ -151,14 +151,14 @@ extern "C" {
 
 // RTOS hooks
 
-void rtos_failed_assert(const char *cond, const char *file, int line) {
+auto rtos_failed_assert(const char *cond, const char *file, int line) -> void {
     __disable_irq();
     printf("Assertion fail: %s (%s:%d)\r\n", cond, file, line);
     test_finished();
 }
 
-void rtos_failed_usage_assert(const char *cond, const char *file, int line,
-                              const char *msg)
+auto rtos_failed_usage_assert(const char *cond, const char *file, int line,
+                              const char *msg) -> void
 {
     __disable_irq();
     std::printf("RTOS usage assertion fail: (%s:%d)\r\n", file, line);
@@ -166,7 +166,7 @@ void rtos_failed_usage_assert(const char *cond, const char *file, int line,
     test_finished();
 }
 
-size_t debug_syscall(void *arg, int svc_num) {
+auto debug_syscall(void *arg, int svc_num) -> size_t {
     __disable_irq();
     switch (svc_num) {
         case 128:
@@ -187,12 +187,12 @@ size_t debug_syscall(void *arg, int svc_num) {
 
 // Interrupt handlers
 
-void SysTick_Handler(void) {
+auto SysTick_Handler() -> void {
     HAL_IncTick();
     rtos::tick();
 }
 
-void TIM2_IRQHandler(void) {
+auto TIM2_IRQHandler() -> void {
     if (timer_callback.has_value()) {
         timer_callback.value()();
     }
@@ -200,7 +200,7 @@ void TIM2_IRQHandler(void) {
 }
 
 #define FAULT_HANDLER(fault_name) \
-    void fault_name##_Handler() { \
+    auto fault_name##_Handler() -> void { \
         puts(#fault_name); \
         test_finished(); \
     }
@@ -208,7 +208,7 @@ void TIM2_IRQHandler(void) {
 FAULT_HANDLER(MemManage)
 FAULT_HANDLER(UsageFault)
 
-void HardFault_Handler() {
+auto HardFault_Handler() -> void {
     if (hardfault_expected) {
         test_passed();
     } else {

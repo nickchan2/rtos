@@ -1,17 +1,16 @@
 #include "rtos_test.hh"
 
+#include <optional>
+
 namespace {
-
-void task_function(void *task_ptr) {
-    EXPECT(rtos::task::self() == task_ptr);
-    rtos_test::pass();
-}
-
+std::optional<rtos_test::TaskWithStack<>> task;
 } // namespace
 
-int main() {
+auto main() -> int {
     rtos_test::setup();
-    rtos_test::TaskWithStack<> task0(1, false, &task0, task_function);
-    rtos_test::TaskWithStack<> task1(1, false, &task1, task_function);
+    task.emplace(0, false, []{
+        EXPECT(rtos::task::self() == &task.value());
+        rtos_test::pass();
+    });
     rtos::start();
 }

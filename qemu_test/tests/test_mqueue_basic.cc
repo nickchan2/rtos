@@ -1,6 +1,5 @@
+#include "rtos.hh"
 #include "rtos_test.hh"
-
-#include <optional>
 
 struct CustomType {
     int a{2003};
@@ -10,32 +9,25 @@ struct CustomType {
     }
 };
 
-namespace {
-
-std::optional<rtos::Mqueue<int, 2>> mqueue_int;
-std::optional<rtos::Mqueue<CustomType, 1>> mqueue_custom_type;
-
-} // namespace
-
 int main() {
     rtos_test::setup();
 
-    mqueue_int.emplace();
-    mqueue_custom_type.emplace();
+    static auto mqueue_int = rtos::Mqueue<int, 2>();
+    static auto mqueue_custom_type = rtos::Mqueue<CustomType, 1>();
 
-    rtos_test::TaskWithStack task0(0, false, []{
+    [[maybe_unused]] static auto task0 = rtos_test::TaskWithStack(0, false, []{
         rtos_test::checkpoint(3);
-        EXPECT(mqueue_int->dequeue() == 42);
-        EXPECT(mqueue_int->dequeue() == -42);
-        EXPECT(mqueue_custom_type->dequeue() == CustomType());
+        EXPECT(mqueue_int.dequeue() == 42);
+        EXPECT(mqueue_int.dequeue() == -42);
+        EXPECT(mqueue_custom_type.dequeue() == CustomType());
         rtos_test::pass();
     });
 
-    rtos_test::TaskWithStack task1(1, false, []{
+    [[maybe_unused]] static auto task1 = rtos_test::TaskWithStack(1, false, []{
         rtos_test::checkpoint(1);
-        mqueue_int->enqueue(42);
-        mqueue_int->enqueue(-42);
-        mqueue_custom_type->enqueue(CustomType());
+        mqueue_int.enqueue(42);
+        mqueue_int.enqueue(-42);
+        mqueue_custom_type.enqueue(CustomType());
         rtos_test::checkpoint(2);
     });
 

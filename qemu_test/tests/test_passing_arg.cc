@@ -6,9 +6,9 @@ void *const passed = reinterpret_cast<void *>(0xDEADBEEFU);
 
 } // namespace
 
-int main(void) {
+auto main() -> int {
     rtos_test::setup();
-    rtos_test::TaskWithStack task(0, false, passed, [](void *arg) {
+    [[maybe_unused]] static auto task = rtos_test::TaskWithStack(0, false, passed, [](void *arg) {
         EXPECT(arg == passed);
         rtos_test::pass();
     });

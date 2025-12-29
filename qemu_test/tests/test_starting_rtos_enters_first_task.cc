@@ -1,8 +1,10 @@
 #include "rtos.hh"
 #include "rtos_test.hh"
 
-int main() {
+auto main() -> int {
     rtos_test::setup();
-    rtos_test::TaskWithStack task(0, false, []{ rtos_test::pass(); });
+    [[maybe_unused]] static auto task = rtos_test::TaskWithStack(0, false, []{
+        rtos_test::pass();
+    });
     rtos::start();
 }

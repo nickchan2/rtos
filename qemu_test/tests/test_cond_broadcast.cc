@@ -4,40 +4,34 @@
 
 constexpr int waiter_cnt = 4;
 
-namespace {
-
-volatile int counter = 0;
-std::optional<rtos::Cond> cond;
-std::optional<rtos::Mutex> mutex;
-
-} // namespace
-
-int main() {
+auto main() -> int {
     rtos_test::setup();
-    cond.emplace();
-    mutex.emplace();
+
+    static auto cond = rtos::Cond();
+    static auto mutex = rtos::Mutex();
+    static volatile int counter = 0;
     
-    std::array<std::optional<rtos_test::TaskWithStack<>>, waiter_cnt> waiters;
+    static auto waiters = std::array<std::optional<rtos_test::TaskWithStack<>>, waiter_cnt>();
     for (auto &waiter : waiters) {
         waiter.emplace(0, false, []{
-            mutex->lock();
-            cond->wait(*mutex);
+            mutex.lock();
+            cond.wait(mutex);
             counter = counter + 1;
-            mutex->unlock();
+            mutex.unlock();
         });
     }
 
-    rtos_test::TaskWithStack broadcaster(0, false, []{
+    [[maybe_unused]] static auto broadcaster = rtos_test::TaskWithStack(0, false, []{
         // Ensure all waiters are waiting before signaling
         rtos::task::sleep(100);
 
-        mutex->lock();
-        cond->broadcast();
-        mutex->unlock();
+        mutex.lock();
+        cond.broadcast();
+        mutex.unlock();
         rtos::task::sleep(100);
-        mutex->lock();
+        mutex.lock();
         EXPECT(counter == waiter_cnt);
-        mutex->unlock();
+        mutex.unlock();
         rtos_test::pass();
     });
 

@@ -1,13 +1,13 @@
 #include "rtos_test.hh"
 
-inline bool fp_active() {
+inline auto fp_active() -> bool {
     return (__get_CONTROL() & (1U << 2U)) != 0;
 }
 
-int main() {
+auto main() -> int {
     rtos_test::setup();
 
-    rtos_test::TaskWithStack fp_task(0, false, []{
+    [[maybe_unused]] static auto fp_task = rtos_test::TaskWithStack(0, false, []{
         volatile float val = 0.0;
         while (val < 100.0) {
             val += 1.0;
@@ -17,7 +17,7 @@ int main() {
         rtos_test::pass();
     });
 
-    rtos_test::TaskWithStack nonfp_task(0, false, []{
+    [[maybe_unused]] static auto nonfp_task = rtos_test::TaskWithStack(0, false, []{
         while (true) {
             rtos::task::yield();
             EXPECT(!fp_active());

@@ -4,26 +4,20 @@
 
 constexpr int waiter_cnt = 4;
 
-namespace {
-
-static volatile int counter = 0;
-static std::optional<rtos::Cond> cond;
-static std::optional<rtos::Mutex> mutex;
-
-} // namespace
-
 int main() {
     rtos_test::setup();
-    cond.emplace();
-    mutex.emplace();
 
-    std::array<std::optional<rtos_test::TaskWithStack<>>, waiter_cnt> waiters;
+    static auto cond = rtos::Cond();
+    static auto mutex = rtos::Mutex();
+    static volatile int counter = 0;
+
+    static auto waiters = std::array<std::optional<rtos_test::TaskWithStack<>>, waiter_cnt>();
     for (auto &waiter : waiters) {
         waiter.emplace(0, false, []{
-            mutex->lock();
-            cond->wait(*mutex);
+            mutex.lock();
+            cond.wait(mutex);
             counter = counter + 1;
-            mutex->unlock();
+            mutex.unlock();
         });
     }
 
@@ -33,13 +27,13 @@ int main() {
 
         int last_count = 0;
         for (int i = 0; i < waiter_cnt; ++i) {
-            mutex->lock();
-            cond->signal();
-            mutex->unlock();
+            mutex.lock();
+            cond.signal();
+            mutex.unlock();
             rtos::task::yield();
-            mutex->lock();
+            mutex.lock();
             EXPECT(counter == ++last_count);
-            mutex->unlock();
+            mutex.unlock();
         }
         rtos_test::pass();
     });

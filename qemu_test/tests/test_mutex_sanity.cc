@@ -1,11 +1,12 @@
 #include "rtos.hh"
 #include "rtos_test.hh"
 
-int main() {
+auto main() -> int {
     rtos_test::setup();
 
-    rtos_test::TaskWithStack task0(0, false, []{
-        rtos::Mutex mutex;
+    static auto mutex = rtos::Mutex();
+
+    [[maybe_unused]] static auto task0 = rtos_test::TaskWithStack(0, false, []{
         mutex.lock();
         mutex.unlock();
         rtos_test::pass();

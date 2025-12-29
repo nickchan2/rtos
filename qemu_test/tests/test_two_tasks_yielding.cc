@@ -4,7 +4,7 @@ namespace {
 
 volatile int counter = 0;
 
-void task_function() {
+auto task_function() -> void {
     int last = counter;
     while (true) {
         counter = counter + 1;
@@ -19,11 +19,11 @@ void task_function() {
 
 } // namespace
 
-int main() {
+auto main() -> int {
     rtos_test::setup();
 
-    rtos_test::TaskWithStack task0(1, false, task_function);
-    rtos_test::TaskWithStack task1(1, false, task_function);
+    [[maybe_unused]] static auto task0 = rtos_test::TaskWithStack(1, false, task_function);
+    [[maybe_unused]] static auto task1 = rtos_test::TaskWithStack(1, false, task_function);
 
     rtos::start();
 }

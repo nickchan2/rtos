@@ -2,37 +2,29 @@
 #include "rtos_test.hh"
 
 #include <cstdint>
-#include <optional>
 
-namespace {
-
-std::optional<rtos::Mqueue<int32_t, 1>> mqueue_i32;
-std::optional<rtos::Mqueue<int64_t, 1>> mqueue_i64;
-
-} // namespace
-
-int main() {
+auto main() -> int {
     rtos_test::setup();
 
-    mqueue_i32.emplace();
-    mqueue_i64.emplace();
+    static auto mqueue_i32 = rtos::Mqueue<int32_t, 1>();
+    static auto mqueue_i64 = rtos::Mqueue<int64_t, 1>();
     
-    rtos_test::TaskWithStack task0(0, false, []{
+    [[maybe_unused]] static auto task0 = rtos_test::TaskWithStack(0, false, []{
         int counter = 0;
         for (int i = 0; i < 10; ++i) {
             ++counter;
-            mqueue_i32->enqueue(counter);
-            const int64_t counter_incremented = mqueue_i64->dequeue();
+            mqueue_i32.enqueue(counter);
+            const int64_t counter_incremented = mqueue_i64.dequeue();
             EXPECT(counter_incremented == ++counter);
         }
         rtos_test::pass();
     });
 
-    rtos_test::TaskWithStack task1(0, false, []{
+    [[maybe_unused]] static auto task1 = rtos_test::TaskWithStack(0, false, []{
         while (true) {
-            int32_t counter = mqueue_i32->dequeue();
+            int32_t counter = mqueue_i32.dequeue();
             ++counter;
-            mqueue_i64->enqueue(counter);
+            mqueue_i64.enqueue(counter);
         }
     });
 

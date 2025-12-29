@@ -5,39 +5,32 @@
 
 constexpr int enqueue_task_count = 10;
 
-namespace {
-
-volatile int counter = 0;
-std::optional<rtos::Mutex> mutex;
-std::optional<rtos::Mqueue<int, 1>> mqueue;
-
-} // namespace
-
-int main() {
+auto main() -> int {
     rtos_test::setup();
 
-    mutex.emplace();
-    mqueue.emplace();
+    static auto mutex = rtos::Mutex();
+    static auto mqueue = rtos::Mqueue<int, 1>();
+    static volatile int counter = 0;
 
-    std::array<std::optional<rtos_test::TaskWithStack<>>, enqueue_task_count> tasks;
+    static auto tasks = std::array<std::optional<rtos_test::TaskWithStack<>>, enqueue_task_count>();
     for (auto &task : tasks) {
         task.emplace(0, false, []{
             int local_counter = 0;
-            mutex->lock();
+            mutex.lock();
             local_counter = counter;
             counter = counter + 1;
-            mutex->unlock();
-            mqueue->enqueue(local_counter);
+            mutex.unlock();
+            mqueue.enqueue(local_counter);
         });
     }
 
-    rtos_test::TaskWithStack task0(0, false, []{
+    [[maybe_unused]] static auto task0 = rtos_test::TaskWithStack(0, false, []{
         rtos::task::sleep(10);
-        mutex->lock();
+        mutex.lock();
         EXPECT(counter == enqueue_task_count);
-        mutex->unlock();
+        mutex.unlock();
         for (int i = 0; i < enqueue_task_count; ++i) {
-            EXPECT(mqueue->dequeue() == i);
+            EXPECT(mqueue.dequeue() == i);
         }
         rtos_test::pass();
     });

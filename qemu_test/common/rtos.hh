@@ -34,10 +34,10 @@ namespace task {
     inline void yield() { rtos_task_yield(); }
     inline void sleep(size_t ticks) { rtos_task_sleep(ticks); }
     inline void suspend() { rtos_task_suspend(); }
-    inline void resume(Task *task) { rtos_task_resume(task); }
+    inline void resume(Task &task) { rtos_task_resume(&task); }
     inline Task *self() { return reinterpret_cast<Task *>(rtos_task_self()); }
     [[noreturn]] inline void exit() { rtos_task_exit(); }
-    inline void join(Task *task) { rtos_task_join(task); }
+    inline void join(Task &task) { rtos_task_join(&task); }
 
 } // namespace task
 

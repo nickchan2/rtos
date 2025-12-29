@@ -2,8 +2,9 @@
 
 #include "rtos.h" // IWYU pragma: export
 #include "rtos.hh" // IWYU pragma: export
-#include "stm32f4xx_hal.h" // IWYU pragma: export
+#include "stm32f4xx_hal.h"
 
+#include <array>
 #include <cstddef>
 #include <source_location>
 #include <string_view>
@@ -49,35 +50,43 @@ struct TaskWithStack : public rtos::Task {
     alignas(8) std::array<std::byte, stack_size> stack;
 };
 
-void setup();
+auto setup() -> void;
 
-void set_timer_callback(void (*callback)());
+auto set_timer_callback(void (*callback)()) -> void;
 
-void start_timer();
+auto start_timer() -> void;
 
-[[noreturn]] void pass();
+[[noreturn]] auto pass() -> void;
 
-[[noreturn]] void expect_hardfault_to_pass(void (*func)());
+[[noreturn]] auto expect_hardfault_to_pass(void (*func)()) -> void;
 
-[[noreturn]] void fail(
+[[noreturn]] auto fail(
     std::string_view msg,
     std::source_location location = std::source_location::current()
-);
+) -> void;
 
-void checkpoint(
+auto checkpoint(
     int num,
     std::source_location location = std::source_location::current()
-);
+) -> void;
+
+template<typename Func>
+auto measure_ticks(Func&& func) -> uint32_t {
+    const uint32_t start = HAL_GetTick();
+    func();
+    const uint32_t end = HAL_GetTick();
+    return end - start;
+}
 
 } // namespace rtos_test
 
 extern "C" {
 
-[[gnu::used]] inline void rtos_test_pass_asm() {
+[[gnu::used]] inline auto rtos_test_pass_asm() -> void {
     rtos_test::pass();
 }
 
-[[gnu::used]] inline void rtos_test_fail_asm() {
+[[gnu::used]] inline auto rtos_test_fail_asm() -> void {
     rtos_test::fail("Failed in asm");
 }
 
