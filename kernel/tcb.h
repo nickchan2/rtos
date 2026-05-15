@@ -8,8 +8,9 @@
 // calls the task function. This ensures that a task always exits properly.
 [[noreturn]] static void tcb_stub(void *arg, rtos_task_func_t task_func) {
     task_func(arg);
-    rtos_task_exit();
-    ASSERT(false);
+    // rtos_task_exit();
+    USAGE_ASSERT(false, "Task function should not return");
+    while (true) {}
 }
 
 static stack_frame_switch_t *tcb_create_switch_frame(

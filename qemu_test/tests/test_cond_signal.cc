@@ -4,7 +4,7 @@
 
 constexpr int waiter_cnt = 4;
 
-int main() {
+auto main() -> int {
     rtos_test::setup();
 
     static auto cond = rtos::Cond();
@@ -18,19 +18,20 @@ int main() {
             cond.wait(mutex);
             counter = counter + 1;
             mutex.unlock();
+            rtos::Task::suspend();
         });
     }
 
     rtos_test::TaskWithStack signaler(0, false, []{
         // Ensure all waiters are waiting before signaling
-        rtos::task::sleep(100);
+        rtos::Task::sleep_for(100);
 
         int last_count = 0;
         for (int i = 0; i < waiter_cnt; ++i) {
             mutex.lock();
             cond.signal();
             mutex.unlock();
-            rtos::task::yield();
+            rtos::Task::yield();
             mutex.lock();
             EXPECT(counter == ++last_count);
             mutex.unlock();

@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <source_location>
 #include <string_view>
+#include <type_traits>
 
 #define EXPECT(cond) \
     do { \
@@ -18,36 +19,47 @@
 
 namespace rtos_test {
 
+template<typename T>
+    requires std::is_trivially_destructible_v<T>
+class StaticStorage {
+public:
+    StaticStorage() noexcept = default;
+
+    template<typename... Args>
+    auto emplace(Args&&... args) -> T& {
+        ::new (storage.data()) T(std::forward<Args>(args)...);
+        return *reinterpret_cast<T *>(storage.data());
+    }
+private:
+    alignas(alignof(T)) std::array<std::byte, sizeof(T)> storage{};
+};
+
 template<size_t stack_size = 512>
-struct TaskWithStack : public rtos::Task {
-    static_assert(stack_size % 8 == 0, "Stack size must be a multiple of 8");
-    static_assert(stack_size >= 256, "Stack size must be at least 256 bytes");
+struct TaskWithStack {
 
     [[nodiscard]] TaskWithStack(size_t priority, bool privileged, void *arg,
-                                rtos_task_func_t func)
-    {
-        rtos::task::create(*this, {
+                                rtos_task_func_t func):
+        task(rtos::Task::Settings{
+            .priority = priority,
+            .privileged = privileged,
+            .stack = stack,
+            .arg = arg,
             .function = func,
-            .task_arg = arg,
-            .stack_low = stack.data(),
-            .stack_size = stack.size(),
-            .priority = priority,
-            .privileged = false,
-        });
-    }
+        })
+    {}
 
-    [[nodiscard]] TaskWithStack(size_t priority, bool privileged, void (*func)()) {
-        rtos::task::create(*this, {
+    [[nodiscard]] TaskWithStack(size_t priority, bool privileged, void (*func)()):
+        task(rtos::Task::Settings{
+            .priority = priority,
+            .privileged = privileged,
+            .stack = stack,
+            .arg = nullptr,
             .function = reinterpret_cast<rtos_task_func_t>(func),
-            .task_arg = nullptr,
-            .stack_low = stack.data(),
-            .stack_size = stack.size(),
-            .priority = priority,
-            .privileged = false,
-        });
-    }
+        })
+    {}
 
-    alignas(8) std::array<std::byte, stack_size> stack;
+    rtos::Task::Stack<stack_size> stack{};
+    rtos::Task task;
 };
 
 auto setup() -> void;

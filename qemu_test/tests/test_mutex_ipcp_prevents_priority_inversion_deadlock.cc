@@ -8,7 +8,7 @@ auto main() -> int {
 
     [[maybe_unused]] static auto task0 = rtos_test::TaskWithStack(1, false, []{
         rtos_test::checkpoint(1);
-        rtos::task::suspend();
+        rtos::Task::suspend();
         rtos_test::checkpoint(4);
         mutex.lock();
         rtos_test::checkpoint(6);
@@ -16,7 +16,7 @@ auto main() -> int {
     });
 
     [[maybe_unused]] static auto task1 = rtos_test::TaskWithStack(1, false, []{
-        rtos::task::sleep(10);
+        rtos::Task::sleep_for(10);
         while (true) {}
     });
 
@@ -24,8 +24,8 @@ auto main() -> int {
         rtos_test::checkpoint(2);
         mutex.lock();
         rtos_test::checkpoint(3);
-        rtos::task::resume(task0);
-        rtos::task::sleep(20);
+        rtos::Task::resume(task0.task);
+        rtos::Task::sleep_for(20);
         rtos_test::checkpoint(5);
         mutex.unlock();
         rtos_test::fail("Task should be preempted");

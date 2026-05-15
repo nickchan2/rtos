@@ -1,0 +1,35 @@
+CompileFlags:
+  Add:
+    - -I../common
+    - -I../common/STM32CubeF4/Drivers/CMSIS/Device/ST/STM32F4xx/Include
+    - -I../common/STM32CubeF4/Drivers/CMSIS/Include
+    - -I../common/STM32CubeF4/Drivers/STM32F4xx_HAL_Driver/Inc
+    - -I../common/STM32CubeF4/Projects/STM324xG_EVAL/Templates/Inc
+    - -I../../kernel
+
+    - -ISTM32CubeF4/Drivers/CMSIS/Device/ST/STM32F4xx/Include
+    - -ISTM32CubeF4/Drivers/CMSIS/Include
+    - -ISTM32CubeF4/Drivers/STM32F4xx_HAL_Driver/Inc
+    - -ISTM32CubeF4/Projects/STM324xG_EVAL/Templates/Inc
+
+    - -DSTM32F405xx
+    - -DRTOS_DEBUG
+
+    - -Wno-c2x-extensions
+    - -Wno-c23-extensions
+
+    - -Wall
+    - -Wextra
+    - -Werror
+    - -Wno-unused-parameter
+    - -Wno-unused-function
+
+    - -m32
+    # - -mabi=ilp32
+
+---
+If:
+  PathMatch: [".*cc", ".*hh"]
+CompileFlags:
+  Add:
+    - -std=c++20

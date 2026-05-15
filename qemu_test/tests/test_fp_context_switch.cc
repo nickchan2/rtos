@@ -11,7 +11,7 @@ auto main() -> int {
         volatile float val = 0.0;
         while (val < 100.0) {
             val += 1.0;
-            rtos::task::yield();
+            rtos::Task::yield();
             EXPECT(fp_active());
         }
         rtos_test::pass();
@@ -19,7 +19,7 @@ auto main() -> int {
 
     [[maybe_unused]] static auto nonfp_task = rtos_test::TaskWithStack(0, false, []{
         while (true) {
-            rtos::task::yield();
+            rtos::Task::yield();
             EXPECT(!fp_active());
         }
     });

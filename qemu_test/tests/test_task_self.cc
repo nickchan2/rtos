@@ -9,7 +9,7 @@ std::optional<rtos_test::TaskWithStack<>> task;
 auto main() -> int {
     rtos_test::setup();
     task.emplace(0, false, []{
-        EXPECT(rtos::task::self() == &task.value());
+        EXPECT(&rtos::Task::self() == &task.value().task);
         rtos_test::pass();
     });
     rtos::start();

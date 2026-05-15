@@ -104,6 +104,8 @@ LD_FLAGS := -T $(LD_SCRIPT)
 $(TEST_EXE): $(OBJ)
 	@echo "LD  " $@
 	@$(ARM_CXX) $(OBJ) -o $@ $(C_CXX_FLAGS) $(LD_FLAGS)
+	@echo "OBJDUMP " $@.dis
+	@arm-none-eabi-objdump -d -C $@ > $@.dis
 
 .PHONY: clean
 clean:

@@ -19,6 +19,7 @@ auto main() -> int {
         EXPECT(mqueue.dequeue() == 1234);
         rtos_test::checkpoint(4);
         rtos_test::start_timer();
+        rtos::Task::sleep_for(100);
     });
 
     rtos_test::set_timer_callback([]{

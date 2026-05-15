@@ -3,14 +3,14 @@
 auto main() -> int {
     rtos_test::setup();
 
-    [[maybe_unused]] static auto low_priority_task = rtos_test::TaskWithStack(1, false, []{
+    [[maybe_unused]] static auto low_priority_task = rtos_test::TaskWithStack(0, false, []{
         rtos_test::fail("Low priority task should not run");
     });
 
-    [[maybe_unused]] static auto high_priority_task = rtos_test::TaskWithStack(2, false, []{
+    [[maybe_unused]] static auto high_priority_task = rtos_test::TaskWithStack(1, false, []{
         for (int i = 0; i < 100; ++i) {
             HAL_Delay(1);
-            rtos::task::yield();
+            rtos::Task::yield();
         }
         rtos_test::pass();
     });

@@ -9,7 +9,7 @@ struct CustomType {
     }
 };
 
-int main() {
+auto main() -> int {
     rtos_test::setup();
 
     static auto mqueue_int = rtos::Mqueue<int, 2>();
@@ -29,6 +29,7 @@ int main() {
         mqueue_int.enqueue(-42);
         mqueue_custom_type.enqueue(CustomType());
         rtos_test::checkpoint(2);
+        rtos::Task::suspend();
     });
 
     rtos::start();

@@ -5,6 +5,7 @@ extern "C" {
 #endif
 
 #include "stack_frame.h"
+#include "rtos_assert.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -95,8 +96,6 @@ void rtos_task_create(rtos_tcb_t *task, const rtos_task_settings_t *settings);
 
 rtos_tcb_t *rtos_task_self(void);
 
-[[noreturn]] void rtos_task_exit(void);
-
 void rtos_task_yield(void);
 
 void rtos_task_sleep(size_t ticks);
@@ -105,10 +104,20 @@ void rtos_task_suspend(void);
 
 void rtos_task_resume(rtos_tcb_t *task);
 
-void rtos_task_join(rtos_tcb_t *task);
+inline void rtos_mutex_create(rtos_mutex_t *mutex, size_t priority_ceil) {
 
-void rtos_mutex_create(rtos_mutex_t *mutex, size_t priority_ceil);
-void rtos_mutex_destroy(rtos_mutex_t *mutex);
+    USAGE_ASSERT(priority_ceil <= RTOS_MAX_TASK_PRIORITY, "");
+    *mutex = (rtos_mutex_t){};
+    mutex->priority_ceil = priority_ceil;
+    // __atomic_test_and_set();
+}
+
+inline void rtos_mutex_destroy(rtos_mutex_t *mutex) {
+    USAGE_ASSERT(mutex != NULL, "Passed NULL mutex");
+    USAGE_ASSERT(mutex->owner == NULL,
+                 "Destroying mutex that tasks are still waiting on");
+}
+
 void rtos_mutex_lock(rtos_mutex_t *mutex);
 bool rtos_mutex_trylock(rtos_mutex_t *mutex);
 void rtos_mutex_unlock(rtos_mutex_t *mutex);
@@ -129,13 +138,25 @@ typedef struct {
     uint8_t *       data;
 } rtos_mqueue_t;
 
-void rtos_mqueue_create(rtos_mqueue_t *mqueue, uint8_t *buffer, size_t slots,
-                        size_t slot_size);
-void rtos_mqueue_destroy(rtos_mqueue_t *mqueue);
+inline void rtos_mqueue_create(rtos_mqueue_t *mqueue, uint8_t *buffer,
+                               size_t slots, size_t slot_size)
+{
+    *mqueue = (rtos_mqueue_t){
+        .slots = slots,
+        .slot_size = slot_size,
+        .head = 0,
+        .tail = 0,
+        .is_full = false,
+        .waiting = {},
+        .data = buffer,
+    };
+}
+
+inline void rtos_mqueue_destroy(rtos_mqueue_t *mqueue) {}
 void rtos_mqueue_enqueue(rtos_mqueue_t *mqueue, const void *data);
 void rtos_mqueue_dequeue(rtos_mqueue_t *mqueue, void *data);
 bool rtos_mqueue_try_enqueue_isr(rtos_mqueue_t *mqueue, const void *data);
 
 #ifdef __cplusplus
-}
+} // extern "C"
 #endif

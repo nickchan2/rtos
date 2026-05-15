@@ -144,7 +144,7 @@ extern "C" {
         "   ldr     r12, =0xDEADBEEF        \n"
         "   ldr     r14, =0xDEADBEEF        \n"
 
-        "   b       rtos_task_exit          \n"
+        "   b       rtos_task_suspend       \n"
     );
 }
 

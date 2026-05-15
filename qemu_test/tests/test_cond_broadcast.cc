@@ -18,17 +18,18 @@ auto main() -> int {
             cond.wait(mutex);
             counter = counter + 1;
             mutex.unlock();
+            rtos::Task::suspend();
         });
     }
 
     [[maybe_unused]] static auto broadcaster = rtos_test::TaskWithStack(0, false, []{
         // Ensure all waiters are waiting before signaling
-        rtos::task::sleep(100);
+        rtos::Task::sleep_for(100);
 
         mutex.lock();
         cond.broadcast();
         mutex.unlock();
-        rtos::task::sleep(100);
+        rtos::Task::sleep_for(100);
         mutex.lock();
         EXPECT(counter == waiter_cnt);
         mutex.unlock();

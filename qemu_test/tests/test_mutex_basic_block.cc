@@ -12,14 +12,15 @@ auto main() -> int {
         rtos_test::checkpoint(2);
         
         // Sleep while having the lock
-        rtos::task::sleep(rtos::ticks_per_slice * 2);
+        rtos::Task::sleep_for(rtos::ticks_per_slice * 2);
 
         mutex.unlock();
+        rtos::Task::suspend();
     });
 
     [[maybe_unused]] static auto task1 = rtos_test::TaskWithStack(0, false, []{
         // Ensure that task0 gets the lock first
-        rtos::task::yield();
+        rtos::Task::yield();
         rtos_test::checkpoint(3);
 
         const uint32_t elapsed = rtos_test::measure_ticks([]{

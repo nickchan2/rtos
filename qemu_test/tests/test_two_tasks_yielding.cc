@@ -12,7 +12,7 @@ auto task_function() -> void {
             rtos_test::pass();
         }
         last = counter;
-        rtos::task::yield();
+        rtos::Task::yield();
         EXPECT(counter == last + 1);
     }
 }

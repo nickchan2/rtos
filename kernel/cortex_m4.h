@@ -30,17 +30,17 @@ static const uint32_t cm4_exc_return_thread_psp_nofp = 0xFFFFFFFDU;
 
 static const uint32_t cm4_epsr_thumb_mask = 1U << 24U;
 
-static void cm4_wait_for_interrupt(void) {
+static inline void cm4_wait_for_interrupt(void) {
     __asm volatile("wfi");
 }
 
-static void cm4_enable_irq(void) {
+static inline void cm4_enable_irq(void) {
     __asm volatile("cpsie i");
 }
 
 // Equivalent to writing 0 to PRIMASK, which raises the execution priority to
 // 0, effectively disabling all interrupts. Note that Hardfault, NMI, and
 // Reset exceptions still have higher priority.
-static void cm4_disable_irq(void) {
+static inline void cm4_disable_irq(void) {
     __asm volatile("cpsid i");
 }

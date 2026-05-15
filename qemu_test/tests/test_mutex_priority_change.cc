@@ -9,11 +9,11 @@ auto main() -> int {
 
     [[maybe_unused]] static auto task_high_pri = rtos_test::TaskWithStack(2, false, []{
         rtos_test::checkpoint(1);
-        rtos::task::suspend();
+        rtos::Task::suspend();
         rtos_test::checkpoint(5);
-        rtos::task::yield();
+        rtos::Task::yield();
         rtos_test::checkpoint(7);
-        rtos::task::yield();
+        rtos::Task::yield();
         rtos_test::checkpoint(9);
         rtos_test::pass();
     });
@@ -22,8 +22,7 @@ auto main() -> int {
         rtos_test::checkpoint(2);
 
         // Ensure the low priority task gets the mutex
-        rtos::task::sleep(5);
-
+        rtos::Task::sleep_for(5);
         rtos_test::fail("Task should never run after sleeping");
     });
 
@@ -35,14 +34,14 @@ auto main() -> int {
 
         rtos_test::checkpoint(4);
     
-        rtos::task::resume(task_high_pri);
-        rtos::task::yield();
+        rtos::Task::resume(task_high_pri.task);
+        rtos::Task::yield();
 
         rtos_test::checkpoint(6);
 
         // Unlock but stay at high priority due to still holding mutex1
         mutex0.unlock();
-        rtos::task::yield();
+        rtos::Task::yield();
 
         rtos_test::checkpoint(8);
 

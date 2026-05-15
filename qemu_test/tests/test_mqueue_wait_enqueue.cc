@@ -21,11 +21,12 @@ auto main() -> int {
             counter = counter + 1;
             mutex.unlock();
             mqueue.enqueue(local_counter);
+            rtos::Task::suspend();
         });
     }
 
     [[maybe_unused]] static auto task0 = rtos_test::TaskWithStack(0, false, []{
-        rtos::task::sleep(10);
+        rtos::Task::sleep_for(10);
         mutex.lock();
         EXPECT(counter == enqueue_task_count);
         mutex.unlock();

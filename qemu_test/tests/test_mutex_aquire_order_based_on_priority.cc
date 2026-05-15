@@ -16,21 +16,23 @@ auto main() -> int {
     });
 
     [[maybe_unused]] static auto task1 = rtos_test::TaskWithStack(1, false, []{
-        rtos::task::sleep(10);
+        rtos::Task::sleep_for(10);
         rtos_test::checkpoint(4);
         mutex.lock();
         rtos_test::checkpoint(6);
         mutex.unlock();
         rtos_test::checkpoint(7);
+        rtos::Task::suspend();
     });
 
     [[maybe_unused]] static auto task2 = rtos_test::TaskWithStack(1, false, []{
         rtos_test::checkpoint(1);
         mutex.lock();
         rtos_test::checkpoint(2);
-        rtos::task::sleep(20);
+        rtos::Task::sleep_for(20);
         rtos_test::checkpoint(5);
         mutex.unlock();
+        rtos::Task::suspend();
     });
 
     rtos::start();

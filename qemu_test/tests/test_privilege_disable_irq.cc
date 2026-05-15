@@ -7,6 +7,7 @@ auto main() -> int {
         rtos_test::checkpoint(1);
         __disable_irq();
         __enable_irq();
+        rtos::Task::suspend();
     });
 
     [[maybe_unused]] static auto unprivileged = rtos_test::TaskWithStack(0, false, []{

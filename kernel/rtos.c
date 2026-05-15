@@ -92,22 +92,22 @@ static rtos_tcb_t *prv_task_self(void) {
     return state.curr_task;
 }
 
-static void prv_task_exit(void) {
-    USAGE_ASSERT(state.is_started, "RTOS must be started before calling");
+// static void prv_task_exit(void) {
+//     USAGE_ASSERT(state.is_started, "RTOS must be started before calling");
 
-    while (!tlist_is_empty(&state.curr_task->waiting_to_join)) {
-        rtos_tcb_t *const task =
-            tlist_pop_front(&state.curr_task->waiting_to_join);
-        ASSERT(task->state == RTOS_TASKSTATE_WAIT_JOIN);
-        task->state = RTOS_TASKSTATE_READY;
-        tpq_push_back(&state.ready_tasks, task);
-    }
+//     while (!tlist_is_empty(&state.curr_task->waiting_to_join)) {
+//         rtos_tcb_t *const task =
+//             tlist_pop_front(&state.curr_task->waiting_to_join);
+//         ASSERT(task->state == RTOS_TASKSTATE_WAIT_JOIN);
+//         task->state = RTOS_TASKSTATE_READY;
+//         tpq_push_back(&state.ready_tasks, task);
+//     }
 
-    // Setting the current task to NULL indicates that the context switch
-    // handler shouldn't save the context of the exited task.
-    state.curr_task = NULL;
-    pend_context_switch();
-}
+//     // Setting the current task to NULL indicates that the context switch
+//     // handler shouldn't save the context of the exited task.
+//     state.curr_task = NULL;
+//     pend_context_switch();
+// }
 
 static void prv_task_yield(void) {
     USAGE_ASSERT(state.is_started, "RTOS must be started before calling");
@@ -146,28 +146,14 @@ static void prv_task_resume(rtos_tcb_t *task) {
     }
 }
 
-static void prv_task_join(rtos_tcb_t *task) {
-    USAGE_ASSERT(task != NULL, "Passed NULL task handle");
-    USAGE_ASSERT(state.is_started, "RTOS must be started before calling");
+// static void prv_task_join(rtos_tcb_t *task) {
+//     USAGE_ASSERT(task != NULL, "Passed NULL task handle");
+//     USAGE_ASSERT(state.is_started, "RTOS must be started before calling");
 
-    tlist_push_back(&task->waiting_to_join, state.curr_task);
-    state.curr_task->state = RTOS_TASKSTATE_WAIT_JOIN;
-    pend_context_switch();
-}
-
-static void prv_mutex_create(rtos_mutex_t *mutex, size_t priority_ceil) {
-    USAGE_ASSERT(priority_ceil <= RTOS_MAX_TASK_PRIORITY, "");
-    mutex->owner = NULL;
-    tpq_init(&mutex->blocked);
-    mutex->priority_ceil = priority_ceil;
-}
-
-static void prv_mutex_destroy(rtos_mutex_t *mutex) {
-    USAGE_ASSERT(mutex != NULL, "Passed NULL mutex");
-    USAGE_ASSERT(mutex->owner == NULL,
-                 "Destroying mutex that tasks are still waiting on");
-    ASSERT(tpq_is_empty(&mutex->blocked));
-}
+//     tlist_push_back(&task->waiting_to_join, state.curr_task);
+//     state.curr_task->state = RTOS_TASKSTATE_WAIT_JOIN;
+//     pend_context_switch();
+// }
 
 static void mutex_lock_helper(rtos_mutex_t *mutex, rtos_tcb_t *task) {
     task->priority = mutex->priority_ceil;
@@ -323,22 +309,6 @@ static void prv_cond_broadcast(rtos_cond_t *cond) {
     cond->mutex = NULL;
 }
 
-static void prv_mqueue_create(rtos_mqueue_t *mqueue, uint8_t *buffer,
-                              size_t slots, size_t slot_size)
-{
-    *mqueue = (rtos_mqueue_t){
-        .slots = slots,
-        .slot_size = slot_size,
-        .head = 0,
-        .tail = 0,
-        .is_full = false,
-        .waiting = {0},
-        .data = buffer,
-    };
-}
-
-static void prv_mqueue_destroy(rtos_mqueue_t *mqueue) {}
-
 static bool mqueue_try_enqueue(rtos_mqueue_t *mqueue, const void *data) {
     bool success = false;
     if (!queue_is_full(mqueue)) {
@@ -393,7 +363,6 @@ static void prv_mqueue_dequeue(rtos_mqueue_t *mqueue, void *data) {
     // The SVC number is encoded in the low byte of the SVC instruction. To
     // access it, the PC saved on the stack during exception entry is used.
     const int svc_num = ((uint8_t *)stack->pc)[-2];
-    size_t rv = 0;
     switch (svc_num) {
         case 0:
             prv_start();
@@ -403,10 +372,7 @@ static void prv_mqueue_dequeue(rtos_mqueue_t *mqueue, void *data) {
                             (const rtos_task_settings_t *)stack->r1);
             break;
         case 2:
-            rv = (size_t)prv_task_self();
-            break;
-        case 3:
-            prv_task_exit();
+            stack->r0 = (size_t)prv_task_self();
             break;
         case 4:
             prv_task_yield();
@@ -420,20 +386,11 @@ static void prv_mqueue_dequeue(rtos_mqueue_t *mqueue, void *data) {
         case 7:
             prv_task_resume((void *)stack->r0);
             break;
-        case 8:
-            prv_task_join((void *)stack->r0);
-            break;
-        case 9:
-            prv_mutex_create((void *)stack->r0, stack->r1);
-            break;
-        case 10:
-            prv_mutex_destroy((void *)stack->r0);
-            break;
         case 11:
             prv_mutex_lock((void *)stack->r0);
             break;
         case 12:
-            rv = prv_mutex_trylock((void *)stack->r0);
+            stack->r0 = (size_t)prv_mutex_trylock((void *)stack->r0);
             break;
         case 13:
             prv_mutex_unlock((void *)stack->r0);
@@ -453,13 +410,6 @@ static void prv_mqueue_dequeue(rtos_mqueue_t *mqueue, void *data) {
         case 18:
             prv_cond_broadcast((void *)stack->r0);
             break;
-        case 19:
-            prv_mqueue_create((void *)stack->r0, (void *)stack->r1, stack->r2,
-                              stack->r3);
-            break;
-        case 20:
-            prv_mqueue_destroy((void *)stack->r0);
-            break;
         case 21:
             prv_mqueue_enqueue((void *)stack->r0, (void *)stack->r1);
             break;
@@ -469,16 +419,12 @@ static void prv_mqueue_dequeue(rtos_mqueue_t *mqueue, void *data) {
         default:
 #ifdef RTOS_DEBUG
             size_t debug_syscall(void *, int);
-            rv = debug_syscall((void *)stack->r0, svc_num);
+            stack->r0 = debug_syscall((void *)stack->r0, svc_num);
 #else // ifdef RTOS_DEBUG
             USAGE_ASSERT(false, "Invalid SVC number");
 #endif // ifdef RTOS_DEBUG
             break;
     }
-
-    // Store the return value in the part of the stack that gets popped to R0
-    // when the handler returns.
-    stack->r0 = rv;
 }
 
 [[gnu::naked]] void SVC_Handler(void) {
@@ -619,48 +565,93 @@ void rtos_tick(void) {
  * Public API implementations
  * ------------------------------------------------------------------------- */
 
-// Macro for SVC wrapper function implementations.
-#define svccall(num, name, ret, ...) \
-    [[gnu::naked]] ret name(__VA_ARGS__) {          \
-        __asm volatile(                             \
-        "   svc    "#num"   \n"                     \
-        "   bx      lr      \n"                     \
-        );                                          \
-    }
-
-svccall(0,  rtos_start,         void,   void)
-svccall(1,  rtos_task_create,   void,   rtos_tcb_t *task,
-                                        const rtos_task_settings_t *settings)
-svccall(2,  rtos_task_self,     rtos_tcb_t *, void)
-svccall(3,  rtos_task_exit,     void,   void)
-svccall(4,  rtos_task_yield,    void,   void)
-svccall(5,  rtos_task_sleep,    void,   size_t ticks)
-svccall(6,  rtos_task_suspend,  void,   void)
-svccall(7,  rtos_task_resume,   void,   rtos_tcb_t *task)
-svccall(8,  rtos_task_join,     void,   rtos_tcb_t *task)
-svccall(9,  rtos_mutex_create,  void,   rtos_mutex_t *mutex,
-                                        size_t priority_ceil)
-svccall(10, rtos_mutex_destroy, void,   rtos_mutex_t *task)
-svccall(11, rtos_mutex_lock,    void,   rtos_mutex_t *task)
-svccall(12, rtos_mutex_trylock, bool,   rtos_mutex_t *task)
-svccall(13, rtos_mutex_unlock,  void,   rtos_mutex_t *task)
-svccall(14, rtos_cond_create,   void,   rtos_cond_t *cond)
-svccall(15, rtos_cond_destroy,  void,   rtos_cond_t *cond)
-svccall(16, rtos_cond_wait,     void,   rtos_cond_t *cond,
-                                        rtos_mutex_t *mutex)
-svccall(17, rtos_cond_signal,   void,   rtos_cond_t *cond)
-svccall(18, rtos_cond_broadcast,void,   rtos_cond_t *cond)
-svccall(19, rtos_mqueue_create, void,   rtos_mqueue_t *mqueue, uint8_t *buffer,
-                                        size_t slots, size_t slot_size)
-svccall(20, rtos_mqueue_destroy,void,   rtos_mqueue_t *mqueue)
-svccall(21, rtos_mqueue_enqueue,void,   rtos_mqueue_t *mqueue,
-                                        const void *data)
-svccall(22, rtos_mqueue_dequeue,void,   rtos_mqueue_t *mqueue,
-                                        void *data)
-
 bool rtos_mqueue_try_enqueue_isr(rtos_mqueue_t *mqueue, const void *data) {
     cm4_disable_irq();
     bool success = mqueue_try_enqueue(mqueue, data);
     cm4_enable_irq();
     return success;
 }
+
+// Macro for SVC wrapper function implementations.
+#define svccall_0a_0r(num, name)    \
+    [[gnu::used]] void name(void) { \
+        __asm volatile(             \
+        "   svc    "#num"   \n"     \
+        : : : "memory"              \
+        );                          \
+    }
+
+#define svccall_0a_1r(num, name, ret) \
+    ret name(void) {    \
+        register ret r0 __asm("r0");                  \
+        __asm volatile(                                     \
+        "   svc    "#num"   \n"                             \
+        : "+r"(r0) : : "memory" \
+        );                                                  \
+        return (ret)r0;                                     \
+    }
+
+#define svccall_1a_0r(num, name, a0_t, a0_n) \
+    void name(a0_t a0_n) {    \
+        register a0_t r0 __asm("r0") = a0_n;      \
+        __asm volatile(                                     \
+        "   svc    "#num"   \n"                             \
+        : : "r"(r0) : "memory" \
+        );                                                  \
+    }
+
+#define svccall_1a_1r(num, name, ret, a0_t, a0_n)           \
+    ret name(a0_t a0_n) {                                   \
+        register a0_t r0 __asm("r0") = a0_n;                \
+        __asm volatile(                                     \
+        "   svc    "#num"   \n"                             \
+        : "+r"(r0) : "r"(r0) : "memory"                     \
+        );                                                  \
+        return (ret)r0;                                     \
+    }
+
+#define svccall_2a_0r(num, name, a0_t, a0_n, a1_t, a1_n)    \
+    void name(a0_t a0_n, a1_t a1_n) {                       \
+        register a0_t r0 __asm("r0") = a0_n;                \
+        register a1_t r1 __asm("r1") = a1_n;                \
+        __asm volatile(                                     \
+        "   svc    "#num"   \n"                             \
+        : : "r"(r0), "r"(r1) : "memory"                     \
+        );                                                  \
+    }
+
+[[noreturn]] void rtos_start(void) {
+    __asm volatile("svc 0" : : : "memory");
+    __builtin_unreachable();
+}
+
+void rtos_task_create(rtos_tcb_t *task, const rtos_task_settings_t *settings) {
+    register rtos_tcb_t *r0 __asm("r0") = task;
+    register const rtos_task_settings_t *r1 __asm("r1") = settings;
+    __asm volatile("svc 1" : : "r"(r0), "r"(r1) : "memory");
+}
+
+rtos_tcb_t *rtos_task_self(void) {
+    register rtos_tcb_t *r0 __asm("r0");
+    __asm volatile("svc 2" : "+r"(r0) : : "memory");
+    return r0;
+}
+
+svccall_0a_0r(4,  rtos_task_yield)
+svccall_1a_0r(5,  rtos_task_sleep, size_t, ticks)
+svccall_0a_0r(6,  rtos_task_suspend)
+svccall_1a_0r(7,  rtos_task_resume,   rtos_tcb_t *, task)
+svccall_1a_0r(8,  rtos_task_join,   rtos_tcb_t *, task)
+svccall_1a_0r(11, rtos_mutex_lock,   rtos_mutex_t *, task)
+svccall_1a_1r(12, rtos_mutex_trylock, bool,   rtos_mutex_t *, task)
+svccall_1a_0r(13, rtos_mutex_unlock,   rtos_mutex_t *, task)
+svccall_1a_0r(14, rtos_cond_create,   rtos_cond_t *, cond)
+svccall_1a_0r(15, rtos_cond_destroy,  rtos_cond_t *, cond)
+svccall_2a_0r(16, rtos_cond_wait, rtos_cond_t *, cond,
+                                  rtos_mutex_t *, mutex)
+svccall_1a_0r(17, rtos_cond_signal,   rtos_cond_t *, cond)
+svccall_1a_0r(18, rtos_cond_broadcast,   rtos_cond_t *, cond)
+svccall_2a_0r(21, rtos_mqueue_enqueue,   rtos_mqueue_t *,mqueue,
+                                        const void *, data)
+svccall_2a_0r(22, rtos_mqueue_dequeue,   rtos_mqueue_t *, mqueue,
+                                        void *, data)

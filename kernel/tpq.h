@@ -4,22 +4,6 @@
 #include "rtos_assert.h"
 #include "tlist.h"
 
-static void tpq_init(rtos_tpq_t *tpq) {
-    for (int i = 0; i < RTOS_NUM_PRIORITY_LEVELS; ++i) {
-        tpq->tlists[i].head = NULL;
-        tpq->tlists[i].tail = NULL;
-    }
-}
-
-static bool tpq_is_empty(rtos_tpq_t *tpq) {
-    for (int i = 0; i < RTOS_NUM_PRIORITY_LEVELS; ++i) {
-        if (!tlist_is_empty(&tpq->tlists[i])) {
-            return false;
-        }
-    }
-    return true;
-}
-
 static bool tpq_list_is_empty(rtos_tpq_t *tpq, rtos_tcb_t *task) {
     return tlist_is_empty(&tpq->tlists[task->priority]);
 }

@@ -68,7 +68,7 @@ auto configure_nvic_for_rtos() -> void {
 }
 
 [[noreturn, gnu::naked]] auto test_failed_syscall(const FailArgs &args) -> void {
-    asm volatile("svc 130");
+    __asm volatile("svc 130");
 }
 
 [[noreturn]] auto test_failed(const FailArgs &args) -> void {
@@ -84,7 +84,7 @@ auto test_passed() -> void {
 }
 
 [[gnu::naked]] auto checkpoint_syscall(const CheckPointArgs &args) -> void {
-    asm volatile(
+    __asm volatile(
         "svc 128    \n"
         "bx lr      \n"
     );
@@ -130,7 +130,7 @@ auto rtos_test::checkpoint(int num, std::source_location location) -> void {
 }
 
 [[gnu::naked]] auto rtos_test::pass() -> void {
-    asm volatile("svc 129");
+    __asm volatile("svc 129");
 }
 
 auto rtos_test::expect_hardfault_to_pass(void (*func)()) -> void {
